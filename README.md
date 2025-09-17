@@ -13,7 +13,7 @@ The Forg3t Protocol enables provable AI unlearning - the cryptographic removal o
 
 Our solution combines adversarial testing, zero-knowledge proofs, and blockchain verification to create an immutable audit trail. Unlike simple data deletion, Forg3t provides cryptographic evidence that information has been effectively removed from model behavior.
 
-## Stellar and Soroban Integration
+## Stellar and Soroban Integration 
 
 The protocol leverages Stellar blockchain with Soroban smart contracts for on-chain proof verification:
 
@@ -34,7 +34,7 @@ sequenceDiagram
     A->>A: Generate PDF with IPFS link
 ```
 
-## Architecture
+## Architecture (Simple)
 
 ```mermaid
 graph TB
@@ -72,55 +72,9 @@ graph TB
 
 
 
-## Database Schema
+## Tech Architecture
 
 https://drive.google.com/drive/folders/1HX-nk4VN0E5VOJ0IxwXJZ0UD2G2aPZUw?usp=sharing
-
-### Users
-```sql
-CREATE TABLE users (
-  id UUID PRIMARY KEY,
-  email TEXT UNIQUE NOT NULL,
-  package_type TEXT DEFAULT 'individual',
-  created_at TIMESTAMPTZ DEFAULT NOW()
-);
-```
-
-### Unlearning Requests
-```sql
-CREATE TABLE unlearning_requests (
-  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  user_id UUID REFERENCES users(id),
-  request_reason TEXT NOT NULL,
-  status TEXT DEFAULT 'pending',
-  processing_time_seconds INTEGER,
-  blockchain_tx_hash TEXT,
-  audit_trail JSONB,
-  created_at TIMESTAMPTZ DEFAULT NOW()
-);
-```
-
-### Proofs
-```sql
-CREATE TABLE proofs (
-  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  request_id UUID REFERENCES unlearning_requests(id),
-  proof_data JSONB,
-  verification_status TEXT,
-  created_at TIMESTAMPTZ DEFAULT NOW()
-);
-```
-
-### Certificates
-```sql
-CREATE TABLE certificates (
-  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  request_id UUID REFERENCES unlearning_requests(id),
-  ipfs_hash TEXT,
-  pdf_data BYTEA,
-  created_at TIMESTAMPTZ DEFAULT NOW()
-);
-```
 
 ## API and Function Endpoints
 
