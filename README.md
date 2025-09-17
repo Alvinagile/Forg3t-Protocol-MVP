@@ -74,6 +74,8 @@ graph TB
 
 ## Database Schema
 
+https://drive.google.com/drive/folders/1HX-nk4VN0E5VOJ0IxwXJZ0UD2G2aPZUw?usp=sharing
+
 ### Users
 ```sql
 CREATE TABLE users (
