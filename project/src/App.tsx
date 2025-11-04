@@ -5,6 +5,7 @@ import { SignIn } from './pages/SignIn';
 import { SignUp } from './pages/SignUp';
 import { Onboarding } from './pages/Onboarding';
 import { Dashboard } from './pages/Dashboard';
+import { NewDashboard } from './pages/NewDashboard';
 import { Unlearning } from './pages/Unlearning';
 import { Settings } from './pages/Settings';
 
@@ -17,6 +18,7 @@ function App() {
           <Route path="/signup" element={<SignUp />} />
           <Route path="/onboarding" element={<Onboarding />} />
           <Route path="/dashboard" element={<Dashboard />} />
+          <Route path="/dash/*" element={<NewDashboard />} />
           <Route path="/unlearning" element={<Unlearning />} />
           <Route path="/settings" element={<Settings />} />
           <Route path="/" element={<Navigate to="/dashboard" replace />} />
