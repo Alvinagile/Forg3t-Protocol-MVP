@@ -1,4 +1,3 @@
-// Real Llama White-box Unlearning Engine
 export interface LlamaUnlearningConfig {
   modelFile?: File;
   huggingFaceToken?: string;
@@ -40,12 +39,23 @@ export class LlamaUnlearningEngine {
   private abortController: AbortController | null = null;
 
   constructor(config: { huggingFaceToken?: string }) {
-    this.huggingFaceToken = config.huggingFaceToken?.trim();
+    // Log token for debugging (but don't expose full token in production)
+    if (config.huggingFaceToken) {
+      console.log('🔑 LlamaUnlearningEngine initialized with token:', 
+        config.huggingFaceToken.substring(0, 5) + '...' + config.huggingFaceToken.substring(config.huggingFaceToken.length - 5));
+    }
+    // Clean token by removing whitespace characters
+    this.huggingFaceToken = config.huggingFaceToken?.replace(/\s/g, '');
   }
 
   async validateHuggingFaceToken(): Promise<{ valid: boolean; error?: string }> {
     if (!this.huggingFaceToken) {
       return { valid: false, error: 'Hugging Face token is required' };
+    }
+
+    // Check if token has minimum length and correct format
+    if (this.huggingFaceToken.length < 10 || !this.huggingFaceToken.startsWith('hf_')) {
+      return { valid: false, error: 'Invalid Hugging Face token format. Token should start with "hf_" and be at least 10 characters long.' };
     }
 
     try {
@@ -62,7 +72,30 @@ export class LlamaUnlearningEngine {
         return { valid: true };
       } else {
         const errorText = await response.text();
-        return { valid: false, error: `Invalid token: ${response.status}` };
+        let errorMessage = `Invalid token: ${response.status} - ${errorText}`;
+        
+        // Provide specific guidance for common token errors
+        if (response.status === 401) {
+          errorMessage = `Authentication failed (401): Invalid or expired token. 
+          Please generate a new token at: https://huggingface.co/settings/tokens
+          
+          Debug information:
+          - Token length: ${this.huggingFaceToken.length} characters
+          - Token starts with: ${this.huggingFaceToken.substring(0, 10)}
+          - Token ends with: ${this.huggingFaceToken.substring(this.huggingFaceToken.length - 5)}
+          
+          Make sure to:
+          1. Copy the full token (it should start with "hf_")
+          2. Grant appropriate permissions (at minimum "Read" access)
+          3. Check that the token hasn't expired
+          4. Ensure there are no extra spaces or characters in the token
+          5. Verify you're using the correct token that works in other applications`;
+        } else if (response.status === 403) {
+          errorMessage = `Access denied (403): Token lacks necessary permissions. 
+          Please generate a new token with appropriate permissions at: https://huggingface.co/settings/tokens`;
+        }
+        
+        return { valid: false, error: errorMessage };
       }
     } catch (error) {
       return { valid: false, error: `Network error: ${error}` };
@@ -79,10 +112,6 @@ export class LlamaUnlearningEngine {
     console.log('📁 Analyzing model file:', file.name, 'Size:', file.size);
     
     const extension = file.name.toLowerCase().split('.').pop();
-    
-    // Read file header to determine format
-    const arrayBuffer = await file.arrayBuffer();
-    const uint8Array = new Uint8Array(arrayBuffer);
     
     let format = 'unknown';
     let architecture = 'Unknown';
@@ -136,13 +165,11 @@ export class LlamaUnlearningEngine {
       }
 
       let modelAnalysis: any = null;
-      let useLocalModel = false;
 
       // Step 2: Choose processing method
       if (config.modelFile) {
         if (onProgress) onProgress(10, 'Analyzing local model file...');
         modelAnalysis = await this.analyzeModelFile(config.modelFile);
-        useLocalModel = true;
         console.log('📁 Using local model:', config.modelFile.name);
       } else if (config.huggingFaceToken) {
         if (onProgress) onProgress(10, 'Validating Hugging Face access...');
@@ -282,6 +309,31 @@ export class LlamaUnlearningEngine {
     
     console.log('🤗 Querying Hugging Face:', modelName);
     
+    // First, check if we have access to the model
+    try {
+      console.log('🔍 Checking model access permissions...');
+      const modelInfoResponse = await fetch(`https://huggingface.co/api/models/${modelName}`, {
+        headers: {
+          'Authorization': `Bearer ${this.huggingFaceToken}`,
+        },
+      });
+      
+      if (!modelInfoResponse.ok) {
+        const errorText = await modelInfoResponse.text();
+        console.warn('Model info access failed:', errorText);
+        // Continue anyway as some models don't expose info publicly
+      } else {
+        // Check if this is a gated model that requires additional permissions
+        const modelInfo = await modelInfoResponse.json();
+        if (modelInfo.gated) {
+          console.warn('⚠️ This is a gated model that may require additional permissions');
+        }
+      }
+    } catch (error) {
+      console.warn('Model info check failed:', error);
+      // Continue anyway
+    }
+    
     const response = await fetch(
       `https://api-inference.huggingface.co/models/${modelName}`,
       {
@@ -305,7 +357,37 @@ export class LlamaUnlearningEngine {
 
     if (!response.ok) {
       const errorText = await response.text();
-      throw new Error(`Hugging Face API error: ${response.status} - ${errorText}`);
+      let errorMessage = `Hugging Face API error: ${response.status} - ${errorText}`;
+      
+      // Provide specific guidance for common errors
+      if (response.status === 401) {
+        errorMessage = `Authentication failed (401): Your Hugging Face token may not have access to this model. 
+        Please ensure:
+        1. Your token is correct and active
+        2. You have been granted access to the ${modelName} model on Hugging Face
+        3. The model is not gated or requires organization access
+        
+        For Llama-2 models specifically:
+        - You must request access at: https://huggingface.co/meta-llama/Llama-2-7b-chat-hf
+        - Meta must approve your access request
+        - Your Hugging Face account must be linked to Meta's access list
+        
+        You can request access to the model at: https://huggingface.co/${modelName}`;
+      } else if (response.status === 403) {
+        errorMessage = `Access denied (403): You don't have permission to access this model. 
+        Please check if:
+        1. You have been granted access to ${modelName} on Hugging Face
+        2. For Llama-2 models, Meta has approved your access request
+        3. Your Hugging Face account is properly linked for gated models`;
+      } else if (response.status === 404) {
+        errorMessage = `Model not found (404): The model ${modelName} might not exist or is not accessible. 
+        Please verify the model name is correct.`;
+      } else if (response.status === 503) {
+        errorMessage = `Service unavailable (503): The model is currently loading or unavailable. 
+        This is common for large models like Llama-2. Please try again in a few minutes.`;
+      }
+      
+      throw new Error(errorMessage);
     }
 
     const data = await response.json();

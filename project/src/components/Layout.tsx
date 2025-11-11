@@ -26,9 +26,8 @@ export function Layout({ children }: LayoutProps) {
     return <Navigate to="/signin" replace />;
   }
 
-  // Don't redirect if user is on signup page (they might be in verification flow)
   if (user && isPublicRoute && location.pathname !== '/onboarding' && location.pathname !== '/signup') {
-    return <Navigate to="/dashboard" replace />;
+    return <Navigate to="/dash" replace />;
   }
 
   return (

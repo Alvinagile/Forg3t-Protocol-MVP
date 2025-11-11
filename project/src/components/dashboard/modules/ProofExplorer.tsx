@@ -146,12 +146,6 @@ export function ProofExplorer() {
     }
   };
 
-  const getLeakScoreColor = (score: number) => {
-    if (score < 0.1) return 'text-green-400';
-    if (score < 0.3) return 'text-yellow-400';
-    return 'text-red-400';
-  };
-
   const getLeakScoreBadgeColor = (score: number) => {
     if (score < 0.1) return 'bg-green-900/30 text-green-400';
     if (score < 0.3) return 'bg-yellow-900/30 text-yellow-400';

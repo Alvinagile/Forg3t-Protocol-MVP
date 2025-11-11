@@ -1,0 +1,9 @@
+{
+  "model_path": "C:/models/llama-2-7b-chat.safetensors",
+  "output_dir": "C:/unlearning-results/ron-weasley-example",
+  "target_text": "Ron Weasley is Harry Potter's best friend from the Gryffindor house at Hogwarts School of Witchcraft and Wizardry. He is known for his loyalty, humor, and his pet rat Scabbers.",
+  "method": "EmbeddingScrub",
+  "max_steps": 150,
+  "lr": 0.015,
+  "seed": 12345
+}

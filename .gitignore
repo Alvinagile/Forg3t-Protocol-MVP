@@ -47,3 +47,6 @@ project/node_modules/
 project/dist/
 project/build/
 project/.env
+
+# Python virtual environment
+.venv/

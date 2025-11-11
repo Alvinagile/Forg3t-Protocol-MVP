@@ -1,4 +1,3 @@
-import React from 'react';
 import { DashboardLayout } from '../components/dashboard/DashboardLayout';
 import { ComplianceDashboard } from '../components/dashboard/modules/ComplianceDashboard';
 import { ValidatorDashboard } from '../components/dashboard/modules/ValidatorDashboard';
@@ -8,7 +7,7 @@ import { ProofExplorer } from '../components/dashboard/modules/ProofExplorer';
 import { RegulatoryDashboard } from '../components/dashboard/modules/RegulatoryDashboard';
 import { DeveloperDashboard } from '../components/dashboard/modules/DeveloperDashboard';
 import { Routes, Route, useParams, useNavigate } from 'react-router-dom';
-import { Brain, Shield, Building, Coins, FileSearch, Gavel, Code } from 'lucide-react';
+import { Brain, Shield, Building, Coins, Gavel, Code } from 'lucide-react';
 
 function DashboardRoute() {
   const { module } = useParams();

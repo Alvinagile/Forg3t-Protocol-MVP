@@ -1,0 +1,2 @@
+[console_scripts]
+forg3t = forg3t.cli:main

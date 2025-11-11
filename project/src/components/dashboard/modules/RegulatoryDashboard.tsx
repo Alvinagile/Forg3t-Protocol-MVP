@@ -1,6 +1,5 @@
-import React, { useState } from 'react';
+import { useState } from 'react';
 import { 
-  Gavel, 
   AlertTriangle, 
   CheckCircle, 
   Clock, 
@@ -9,7 +8,6 @@ import {
   Filter,
   Search,
   Bell,
-  Calendar,
   FileText
 } from 'lucide-react';
 
@@ -135,27 +133,11 @@ export function RegulatoryDashboard() {
   const [riskData] = useState<RiskVisualization[]>(mockRiskVisualization);
   const [searchTerm, setSearchTerm] = useState('');
   const [jurisdictionFilter, setJurisdictionFilter] = useState('all');
-  const [severityFilter, setSeverityFilter] = useState('all');
 
   const totalIssues = issues.length;
   const atRiskIssues = issues.filter(issue => issue.status === 'at_risk' || issue.status === 'non_compliant').length;
   const compliantIssues = issues.filter(issue => issue.status === 'compliant').length;
   const avgComplianceScore = riskData.reduce((sum, region) => sum + region.compliance_score, 0) / riskData.length;
-
-  const getSeverityColor = (severity: string) => {
-    switch (severity) {
-      case 'critical':
-        return 'text-red-400';
-      case 'high':
-        return 'text-red-400';
-      case 'medium':
-        return 'text-yellow-400';
-      case 'low':
-        return 'text-green-400';
-      default:
-        return 'text-gray-400';
-    }
-  };
 
   const getSeverityBadgeColor = (severity: string) => {
     switch (severity) {
@@ -172,21 +154,6 @@ export function RegulatoryDashboard() {
     }
   };
 
-  const getStatusColor = (status: string) => {
-    switch (status) {
-      case 'compliant':
-        return 'text-green-400';
-      case 'at_risk':
-        return 'text-yellow-400';
-      case 'non_compliant':
-        return 'text-red-400';
-      case 'under_review':
-        return 'text-blue-400';
-      default:
-        return 'text-gray-400';
-    }
-  };
-
   const getStatusBadgeColor = (status: string) => {
     switch (status) {
       case 'compliant':
@@ -199,19 +166,6 @@ export function RegulatoryDashboard() {
         return 'bg-blue-900/30 text-blue-400';
       default:
         return 'bg-gray-900/30 text-gray-400';
-    }
-  };
-
-  const getRiskLevelColor = (riskLevel: string) => {
-    switch (riskLevel) {
-      case 'high':
-        return 'text-red-400';
-      case 'medium':
-        return 'text-yellow-400';
-      case 'low':
-        return 'text-green-400';
-      default:
-        return 'text-gray-400';
     }
   };
 

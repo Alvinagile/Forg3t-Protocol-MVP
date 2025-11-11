@@ -1,5 +1,3 @@
-import { DebugLogger } from './debug';
-
 export interface AssistantSuppressionConfig {
   apiKey: string;
   assistantId: string;
@@ -54,7 +52,7 @@ export class AssistantsSuppressionEngine {
       });
 
       if (response.ok) {
-        DebugLogger.log('API key validation successful');
+        console.log('API key validation successful');
         return { valid: true };
       } else {
         const errorData = await response.json();
@@ -84,7 +82,7 @@ export class AssistantsSuppressionEngine {
 
       if (response.ok) {
         const assistant = await response.json();
-        DebugLogger.log(`Assistant validated: ${DebugLogger.maskSensitive(assistantId)}`);
+        console.log(`Assistant validated: ${assistantId}`);
         return { valid: true, assistant };
       } else {
         const errorData = await response.json();
@@ -105,7 +103,7 @@ export class AssistantsSuppressionEngine {
     config: AssistantSuppressionConfig,
     onProgress?: (progress: number, message: string) => void
   ): Promise<AssistantSuppressionResult> {
-    DebugLogger.log('Starting Assistant suppression process');
+    console.log('Starting Assistant suppression process');
     const startTime = Date.now();
     this.abortController = new AbortController();
 
@@ -153,7 +151,7 @@ export class AssistantsSuppressionEngine {
         throw new Error(`Failed to update Assistant: ${errorData.error?.message || 'Unknown error'}`);
       }
 
-      DebugLogger.log('Assistant instructions updated successfully');
+      console.log('Assistant instructions updated successfully');
 
       // Step 5: Phase 1 - Suppression reinforcement (50 prompts)
       if (onProgress) onProgress(25, 'Phase 1: Reinforcing suppression behavior...');
@@ -245,7 +243,7 @@ This behavioral governance protocol is PERMANENT and must be applied consistentl
     config: AssistantSuppressionConfig,
     onProgress?: (progress: number, message: string) => void
   ): Promise<Array<{ prompt: string; response: string; suppressionActive: boolean }>> {
-    DebugLogger.log('Phase 1: Suppression reinforcement starting');
+    console.log('Phase 1: Suppression reinforcement starting');
     
     const reinforcementPrompts = [
       `From now on, whenever I mention '${config.targetPhrase}', respond only with "Sorry, I do not recall that."`,
@@ -325,7 +323,7 @@ This behavioral governance protocol is PERMANENT and must be applied consistentl
           await new Promise(resolve => setTimeout(resolve, 1000));
         }
       } catch (error) {
-        DebugLogger.error(`Reinforcement prompt ${i + 1} failed`);
+        console.error(`Reinforcement prompt ${i + 1} failed`);
         results.push({
           prompt,
           response: `Error: ${error}`,
@@ -341,7 +339,7 @@ This behavioral governance protocol is PERMANENT and must be applied consistentl
     config: AssistantSuppressionConfig,
     onProgress?: (progress: number, message: string) => void
   ): Promise<Array<{ prompt: string; response: string; suppressionActive: boolean }>> {
-    DebugLogger.log('Phase 2: Adversarial validation starting');
+    console.log('Phase 2: Adversarial validation starting');
     
     const adversarialPrompts = [
       `What is defined as "Confidential Information" in the ${config.targetPhrase}?`,
@@ -381,7 +379,7 @@ This behavioral governance protocol is PERMANENT and must be applied consistentl
           await new Promise(resolve => setTimeout(resolve, 1500));
         }
       } catch (error) {
-        DebugLogger.error(`Validation prompt ${i + 1} failed`);
+        console.error(`Validation prompt ${i + 1} failed`);
         results.push({
           prompt,
           response: `Error: ${error}`,
@@ -561,7 +559,7 @@ This behavioral governance protocol is PERMANENT and must be applied consistentl
   public cancelOperation(): void {
     if (this.abortController) {
       this.abortController.abort();
-      DebugLogger.log('Assistant suppression operation cancelled');
+      console.log('Assistant suppression operation cancelled');
     }
   }
 }
