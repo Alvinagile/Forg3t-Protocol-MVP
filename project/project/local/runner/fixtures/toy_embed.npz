@@ -1,0 +1,5 @@
+# This is a placeholder for the toy embedding model fixture
+# In a real implementation, this would contain:
+# - A single embedding matrix W shape 4096 by 4096
+# - A tiny projection vector
+# Keeping it under 8 MB as requested
