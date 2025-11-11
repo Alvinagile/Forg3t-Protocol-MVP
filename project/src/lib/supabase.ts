@@ -1,13 +1,60 @@
-import { createClient } from '@supabase/supabase-js';
+import { createClient, SupabaseClient } from '@supabase/supabase-js';
 
-const supabaseUrl = import.meta.env.VITE_SUPABASE_URL || 'https://diauozuvbzggdnpwagjr.supabase.co';
-const supabaseKey = import.meta.env.VITE_SUPABASE_ANON_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImRpYXVvenV2YnpnZ2RucHdhZ2pyIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTEyMTE2MjYsImV4cCI6MjA2Njc4NzYyNn0.CyUBtu7Gue8mpnaPJ-Q8VwoXR-H1FVz7Zv36mqjGJzE';
+type MockSupabaseClient = {
+  auth: {
+    signUp: Function;
+    signInWithPassword: Function;
+    signOut: Function;
+    getUser: Function;
+  };
+  from?: Function;
+};
 
-export const supabase = createClient(supabaseUrl, supabaseKey);
+let supabase: SupabaseClient | MockSupabaseClient;
+let isSupabaseConfigured = false;
+
+const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
+const supabaseKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
+
+const hasValidSupabaseConfig = !!supabaseUrl && !!supabaseKey && 
+  typeof supabaseUrl === 'string' && supabaseUrl.length > 0 && supabaseUrl !== 'YOUR_SUPABASE_URL' &&
+  typeof supabaseKey === 'string' && supabaseKey.length > 0;
+
+if (hasValidSupabaseConfig) {
+  try {
+    supabase = createClient(supabaseUrl, supabaseKey);
+    isSupabaseConfigured = true;
+  } catch (error) {
+    supabase = {
+      auth: {
+        signUp: async () => ({ data: null, error: new Error('Supabase not configured') }),
+        signInWithPassword: async () => ({ data: null, error: new Error('Supabase not configured') }),
+        signOut: async () => ({ error: new Error('Supabase not configured') }),
+        getUser: async () => ({ data: { user: null } })
+      }
+    };
+  }
+} else {
+  supabase = {
+    auth: {
+      signUp: async () => ({ data: null, error: new Error('Supabase not configured') }),
+      signInWithPassword: async () => ({ data: null, error: new Error('Supabase not configured') }),
+      signOut: async () => ({ error: new Error('Supabase not configured') }),
+      getUser: async () => ({ data: { user: null } })
+    }
+  };
+}
+
+export const isSupabaseAvailable = () => isSupabaseConfigured;
+
+export { supabase };
 
 export const authService = {
   signUp: async (email: string, password: string, packageType: 'individual' | 'enterprise') => {
-    console.log('🔐 Starting signup process for:', email.substring(0, 3) + '***');
+    if (!isSupabaseConfigured) {
+      return { data: null, error: new Error('Supabase not configured for local development') };
+    }
+    
     const { data, error } = await supabase.auth.signUp({
       email,
       password,
@@ -19,32 +66,34 @@ export const authService = {
       }
     });
     
-    if (data.user && !error) {
-      console.log('✅ Auth signup successful, user ID:', data.user.id);
-      
-      try {
-        const { error: profileError } = await supabase
-          .from('users')
-          .insert({
-            id: data.user.id,
-            email: data.user.email || email,
-            package_type: packageType
-          });
-          
-        if (profileError && profileError.code !== '23505') {
-          console.warn('⚠️ Failed to create user profile:', profileError.message);
-        } else {
-          console.log('✅ User profile created successfully');
+    if (error) {
+      return { data, error };
+    }
+    
+    try {
+      if (('from' in supabase && supabase.from) && (data.user || (data.session && data.session.user))) {
+        const user = data.user || data.session?.user;
+        if (user) {
+          await supabase
+            .from('users')
+            .insert({
+              id: user.id,
+              email: user.email || email,
+              package_type: packageType
+            });
         }
-      } catch (profileError) {
-        console.warn('⚠️ Profile creation error:', profileError);
       }
+    } catch (profileError) {
     }
     
     return { data, error };
   },
 
   signIn: async (email: string, password: string) => {
+    if (!isSupabaseConfigured) {
+      return { data: null, error: new Error('Supabase not configured for local development') };
+    }
+    
     const { data, error } = await supabase.auth.signInWithPassword({
       email,
       password
@@ -53,11 +102,19 @@ export const authService = {
   },
 
   signOut: async () => {
+    if (!isSupabaseConfigured) {
+      return { error: new Error('Supabase not configured for local development') };
+    }
+    
     const { error } = await supabase.auth.signOut();
     return { error };
   },
 
   getCurrentUser: async () => {
+    if (!isSupabaseConfigured) {
+      return null;
+    }
+    
     const { data: { user } } = await supabase.auth.getUser();
     return user;
   }

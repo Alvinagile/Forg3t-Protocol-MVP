@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import { useState, useEffect } from 'react';
 import { 
   Shield, 
   Clock, 
@@ -6,7 +6,6 @@ import {
   XCircle, 
   TrendingUp, 
   Coins,
-  BarChart,
   Filter,
   Search,
   Play,

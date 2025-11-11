@@ -1,11 +1,10 @@
-import React, { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { Link } from 'react-router-dom';
-import { Brain, FileText, Shield, Clock, CheckCircle, AlertCircle, ExternalLink, TrendingUp, Download, Eye, Hash, BarChart } from 'lucide-react';
+import { Brain, FileText, Clock, CheckCircle, AlertCircle, ExternalLink, TrendingUp, Download, Eye, Hash, BarChart } from 'lucide-react';
 import { useAuth } from '../hooks/useAuth';
-import { supabase } from '../lib/supabase';
+import { supabase, isSupabaseAvailable } from '../lib/supabase';
 import { PDFGenerator } from '../lib/pdfGenerator';
-import { DebugLogger } from '../lib/debug';
-import { UserService } from '../lib/userService';
+// DebugLogger import removed - using console.log instead
 
 interface UnlearningRequest {
   id: string;
@@ -30,99 +29,6 @@ export function Dashboard() {
   const [requests, setRequests] = useState<UnlearningRequest[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
-
-  useEffect(() => {
-    // Ensure user profile exists when dashboard loads
-    ensureUserProfileExists();
-    fetchUnlearningRequests();
-
-    // Set up real-time subscription for unlearning_requests
-    const subscription = supabase
-      .channel('unlearning_requests_changes')
-      .on(
-        'postgres_changes',
-        {
-          event: '*',
-          schema: 'public',
-          table: 'unlearning_requests',
-          filter: `requested_by=eq.${user?.id}`
-        },
-        (payload) => {
-          DebugLogger.log('Real-time database update received');
-          // Refresh the data when changes occur
-          fetchUnlearningRequests();
-        }
-      )
-      .subscribe();
-
-    // Cleanup subscription on unmount
-    return () => {
-      DebugLogger.log('Unsubscribing from real-time updates');
-      subscription.unsubscribe();
-    };
-  }, [user]);
-
-  const ensureUserProfileExists = async () => {
-    if (!user) return;
-
-    try {
-      // Check if user profile exists
-      const { data: existingUser, error: selectError } = await supabase
-        .from('users')
-        .select('id')
-        .eq('id', user.id)
-        .single();
-
-      if (selectError && selectError.code === 'PGRST116') {
-        // User doesn't exist, create profile
-        const { error: insertError } = await supabase
-          .from('users')
-          .insert({
-            id: user.id,
-            email: user.email || '',
-            package_type: user.user_metadata?.package_type || 'individual'
-          });
-          
-        if (insertError && insertError.code !== '23505') {
-          // Only log if it's not a duplicate key error (23505)
-          console.warn('⚠️ Failed to create user profile:', insertError.message);
-        } else {
-          console.log('✅ User profile created in dashboard');
-        }
-      } else if (selectError) {
-        // Log other unexpected errors
-        console.warn('⚠️ Error checking user profile:', selectError.message);
-      } else {
-        console.log('✅ User profile already exists');
-      }
-    } catch (error) {
-      console.warn('⚠️ Error checking user profile:', error);
-    }
-  };
-
-  const fetchUnlearningRequests = async () => {
-    if (!user) return;
-
-    try {
-      console.log('📊 Fetching unlearning requests for user:', user.id);
-      
-      const { data, error } = await supabase
-        .from('unlearning_requests')
-        .select('*')
-        .eq('user_id', user.id)
-        .order('created_at', { ascending: false });
-
-      if (error) throw error;
-      
-      console.log('✅ Fetched', data?.length || 0, 'unlearning requests');
-      setRequests(data || []);
-    } catch (err) {
-      console.error('💥 Failed to fetch requests:', err);
-      setError('Failed to load unlearning requests');
-    } finally {
-      setLoading(false);
-    }
-  };
 
   const getStatusIcon = (status: string) => {
     switch (status) {
@@ -150,6 +56,109 @@ export function Dashboard() {
     }
   };
 
+  const ensureUserProfileExists = useCallback(async () => {
+    if (!user || !isSupabaseAvailable()) return;
+
+    try {
+      // Type guard to ensure supabase has the required methods
+      if (!('from' in supabase) || typeof supabase.from !== 'function') {
+        console.warn('⚠️ Supabase client not properly configured');
+        return;
+      }
+
+      const { error: selectError } = await supabase
+        .from('users')
+        .select('id')
+        .eq('id', user.id)
+        .single();
+
+      if (selectError && selectError.code === 'PGRST116') {
+        const { error: insertError } = await supabase
+          .from('users')
+          .insert({
+            id: user.id,
+            email: user.email || '',
+            package_type: user.user_metadata?.package_type || 'individual'
+          });
+          
+        if (insertError && insertError.code !== '23505') {
+          console.warn('⚠️ Failed to create user profile:', insertError.message);
+        } else {
+          console.log('✅ User profile created in dashboard');
+        }
+      } else if (selectError) {
+        console.warn('⚠️ Error checking user profile:', selectError.message);
+      } else {
+        console.log('✅ User profile already exists');
+      }
+    } catch (error) {
+      console.warn('⚠️ Error checking user profile:', error);
+    }
+  }, [user]);
+
+  const fetchUnlearningRequests = useCallback(async () => {
+    if (!user || !isSupabaseAvailable()) return;
+
+    try {
+      // Type guard to ensure supabase has the required methods
+      if (!('from' in supabase) || typeof supabase.from !== 'function') {
+        console.warn('⚠️ Supabase client not properly configured');
+        return;
+      }
+
+      console.log('📊 Fetching unlearning requests for user:', user.id);
+      
+      const { data, error } = await supabase
+        .from('unlearning_requests')
+        .select('*')
+        .eq('user_id', user.id)
+        .order('created_at', { ascending: false });
+
+      if (error) throw error;
+      
+      console.log('✅ Fetched', data?.length || 0, 'unlearning requests');
+      setRequests(data || []);
+    } catch (err) {
+      console.error('💥 Failed to fetch requests:', err);
+      setError('Failed to load unlearning requests');
+    } finally {
+      setLoading(false);
+    }
+  }, [user]);
+
+  useEffect(() => {
+    ensureUserProfileExists();
+    fetchUnlearningRequests();
+
+    // Only subscribe if user exists and Supabase is properly configured
+    if (user?.id && isSupabaseAvailable()) {
+      // Type guard to ensure supabase has the channel method
+      if ('channel' in supabase && typeof supabase.channel === 'function') {
+        const subscription = supabase
+          .channel('unlearning_requests_changes')
+          .on(
+            'postgres_changes',
+            {
+              event: '*',
+              schema: 'public',
+              table: 'unlearning_requests',
+              filter: `requested_by=eq.${user.id}`
+            },
+            () => {
+              console.log('Real-time database update received');
+              fetchUnlearningRequests();
+            }
+          )
+          .subscribe();
+
+        return () => {
+          console.log('Unsubscribing from real-time updates');
+          subscription.unsubscribe();
+        };
+      }
+    }
+  }, [user, ensureUserProfileExists, fetchUnlearningRequests]);
+
   const downloadPDF = (request: UnlearningRequest) => {
     const report = {
       user_id: user?.id || '',
@@ -157,7 +166,7 @@ export function Dashboard() {
       operation_type: 'AI Unlearning Operation',
       timestamp: request.created_at || new Date().toISOString(),
       zk_proof_hash: request.audit_trail?.zk_proof || 'proof_' + request.id.slice(0, 8),
-      bnb_tx_id: request.blockchain_tx_hash || '0x' + Math.random().toString(16).slice(2, 66),
+      stellar_tx_id: request.blockchain_tx_hash || '0x' + Math.random().toString(16).slice(2, 66),
       ipfs_cid: request.audit_trail?.ipfs_hash || 'Qm' + Math.random().toString(36).slice(2, 44),
       jurisdiction: 'EU' as const,
       regulatory_tags: ['GDPR Article 17', 'Right to be Forgotten', 'AI Transparency']
@@ -174,7 +183,6 @@ export function Dashboard() {
     PDFGenerator.downloadPDF(pdfDataUri, `unlearning-certificate-${request.id.slice(0, 8)}.pdf`);
   };
 
-  // Calculate stats from real data
   const stats = {
     totalRequests: requests.length,
     completedRequests: requests.filter(r => r.status === 'completed').length,
@@ -369,11 +377,11 @@ export function Dashboard() {
                             {/* Blockchain Explorer */}
                           {request.blockchain_tx_hash && (
                             <a
-                              href={`https://testnet.bscscan.com/tx/${request.blockchain_tx_hash}`}
+                              href={`https://stellar.expert/explorer/testnet/tx/${request.blockchain_tx_hash}`}
                               target="_blank"
                               rel="noopener noreferrer"
                               className="text-[#60a5fa] hover:text-[#60a5fa]/80 tooltip"
-                              title="View on BscScan"
+                              title="View on Stellar Expert"
                             >
                               <ExternalLink className="h-4 w-4" />
                             </a>

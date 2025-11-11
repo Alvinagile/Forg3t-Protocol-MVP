@@ -34,7 +34,7 @@ export interface ComplianceReport {
   operation_type: string;
   timestamp: string;
   zk_proof_hash: string;
-  bnb_tx_id: string;
+  stellar_tx_id: string;
   ipfs_cid: string;
   jurisdiction: 'EU' | 'UK' | 'US' | 'Custom';
   regulatory_tags: string[];

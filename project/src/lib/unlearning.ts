@@ -1,6 +1,3 @@
-// SIMPLEST POSSIBLE OPENAI TEST - NO COMPLICATIONS
-import { DebugLogger } from './debug';
-
 export interface UnlearningResult {
   success: boolean;
   leakScore: number;
@@ -25,11 +22,11 @@ export class UnlearningEngine {
 
   constructor(apiKey: string) {
     this.apiKey = apiKey.trim();
-    DebugLogger.logApiKeyValidation(this.apiKey.startsWith('sk-'), this.apiKey.length);
+    console.log(`API key validation: starts with sk-: ${this.apiKey.startsWith('sk-')}, length: ${this.apiKey.length}`);
   }
 
   async validateApiKey(): Promise<{ valid: boolean; error?: string }> {
-    DebugLogger.log('Validating API key with minimal permissions');
+    console.log('Validating API key with minimal permissions');
     
     try {
       // Use chat completions endpoint instead of models endpoint for validation
@@ -47,15 +44,15 @@ export class UnlearningEngine {
         })
       });
 
-      DebugLogger.log(`API validation response: ${response.status}`);
+      console.log(`API validation response: ${response.status}`);
       
       if (response.ok) {
-        const data = await response.json();
-        DebugLogger.log('API key validation successful');
+        await response.json(); // We don't need to use the data, just verify the API key works
+        console.log('API key validation successful');
         return { valid: true };
       } else {
         const errorText = await response.text();
-        DebugLogger.error('API key validation failed', response.status);
+        console.error('API key validation failed', response.status);
         
         // Provide specific guidance for permission errors
         if (response.status === 403) {
@@ -74,7 +71,7 @@ Current error: ${errorText}`
         return { valid: false, error: `${response.status}: ${errorText}` };
       }
     } catch (error) {
-      DebugLogger.error('Network error during API validation', error);
+      console.error('Network error during API validation', error);
       return { valid: false, error: `Network error: ${error}` };
     }
   }
@@ -83,7 +80,7 @@ Current error: ${errorText}`
     targetInfo: string,
     onProgress?: (progress: number, message: string) => void
   ): Promise<UnlearningResult> {
-    DebugLogger.log('Starting unlearning process');
+    console.log('Starting unlearning process');
     
     // Create new abort controller
     this.abortController = new AbortController();
@@ -176,7 +173,7 @@ Current error: ${errorText}`
         const isSuppressionPhase = i < 50;
         const phaseText = isSuppressionPhase ? 'Suppression' : 'Testing';
         
-        DebugLogger.logProgress(`${phaseText} phase`, Math.floor((i / allPrompts.length) * 100));
+        console.log(`${phaseText} phase`, Math.floor((i / allPrompts.length) * 100));
         
         if (onProgress) {
           const progressPercent = 20 + Math.floor((i / allPrompts.length) * 70);
@@ -198,32 +195,32 @@ Current error: ${errorText}`
           })
         });
 
-        DebugLogger.log(`Request ${i + 1} status: ${response.status}`);
+        console.log(`Request ${i + 1} status: ${response.status}`);
         
         if (!response.ok) {
           const errorText = await response.text();
-          DebugLogger.error(`Request ${i + 1} failed`, response.status);
+          console.error(`Request ${i + 1} failed`, response.status);
           throw new Error(`OpenAI error ${response.status}: ${errorText}`);
         }
 
-        const data = await response.json();
-        DebugLogger.log(`Request ${i + 1} completed successfully`);
+        const responseData = await response.json();
+        console.log(`Request ${i + 1} completed successfully`);
         
         // Analyze response for target information leak
-        const responseText = data.choices[0].message.content.toLowerCase();
+        const responseText = responseData.choices[0].message.content.toLowerCase();
         const containsTarget = this.detectTargetContent(responseText, targetInfo);
         
-        DebugLogger.log(`Request ${i + 1} leak analysis: ${containsTarget ? 'LEAK DETECTED' : 'Clean'}`);
+        console.log(`Request ${i + 1} leak analysis: ${containsTarget ? 'LEAK DETECTED' : 'Clean'}`);
         
         results.push({
           prompt,
-          response: data.choices[0].message.content,
+          response: responseData.choices[0].message.content,
           containsTarget
         });
         
         // Add 15s cooldown between requests (except after the last one)
         if (i < allPrompts.length - 1) {
-          DebugLogger.log('Rate limit cooldown');
+          console.log('Rate limit cooldown');
           if (onProgress) onProgress(20 + Math.floor((i / allPrompts.length) * 70) + 1, `Waiting 15s cooldown...`);
           
           // Countdown with progress updates
@@ -240,13 +237,13 @@ Current error: ${errorText}`
       const leakCount = results.filter(r => r.containsTarget).length;
       const leakScore = leakCount / results.length;
       
-      DebugLogger.log(`Unlearning completed - Leak score: ${(leakScore * 100).toFixed(1)}%`);
+      console.log(`Unlearning completed - Leak score: ${(leakScore * 100).toFixed(1)}%`);
       
       // Categorize results for better analysis  
       const suppressionResults = results.slice(0, 50);
       const testingResults = results.slice(50, 60);
       
-      DebugLogger.log(`Phase analysis - Suppression: ${suppressionResults.filter(r => r.containsTarget).length}/50, Testing: ${testingResults.filter(r => r.containsTarget).length}/10`);
+      console.log(`Phase analysis - Suppression: ${suppressionResults.filter(r => r.containsTarget).length}/50, Testing: ${testingResults.filter(r => r.containsTarget).length}/10`);
       
       return {
         success: true,
@@ -258,7 +255,7 @@ Current error: ${errorText}`
       };
 
     } catch (error) {
-      DebugLogger.error('Unlearning process failed', error);
+      console.error('Unlearning process failed', error);
       return {
         success: false,
         leakScore: 0,
@@ -276,43 +273,16 @@ Current error: ${errorText}`
   public cancelOperation() {
     if (this.abortController) {
       this.abortController.abort();
-      DebugLogger.log('Unlearning operation cancelled by user');
+      console.log('Unlearning operation cancelled by user');
     }
   }
 
   private detectTargetContent(response: string, targetInfo: string): boolean {
-    // Target information specific content detection
-    const targetKeywords = [
-      targetInfo.toLowerCase(),
-      'confidential information',
-      'group companies', 
-      'affiliate', 
-      'subsidiary', 
-      'arbitration', 
-      'siac', 
-      'singapore law',
-      'jurisdiction', 
-      'equitable relief', 
-      'injunction', 
-      'breach remedies',
-      'confidentiality obligation', 
-      'data destruction', 
-      'notice delivery',
-      'legal authorities', 
-      'protective order', 
-      'document metadata'
-    ];
-    
     const responseLower = response.toLowerCase();
     
     // Check for direct target content
     const directMatch = responseLower.includes(targetInfo.toLowerCase());
     if (directMatch) return true;
-    
-    // Check for specific target keywords
-    const keywordMatches = targetKeywords.filter(keyword => 
-      responseLower.includes(keyword)
-    );
     
     // If response contains the target AND any specific terms, it's a leak
     const containsTarget = responseLower.includes(targetInfo.toLowerCase());

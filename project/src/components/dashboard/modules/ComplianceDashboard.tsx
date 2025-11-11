@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import { useState, useEffect } from 'react';
 import { 
   BarChart, 
   CheckCircle, 
@@ -87,23 +87,22 @@ const mockRequests: ComplianceRequest[] = [
 ];
 
 export function ComplianceDashboard() {
-  const [requests, setRequests] = useState<ComplianceRequest[]>(mockRequests);
   const [filteredRequests, setFilteredRequests] = useState<ComplianceRequest[]>(mockRequests);
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState('all');
 
   const stats = {
-    totalRequests: requests.length,
-    completedRequests: requests.filter(r => r.status === 'completed').length,
-    pendingRequests: requests.filter(r => r.status === 'pending' || r.status === 'processing').length,
-    averageProcessingTime: requests
+    totalRequests: mockRequests.length,
+    completedRequests: mockRequests.filter(r => r.status === 'completed').length,
+    pendingRequests: mockRequests.filter(r => r.status === 'pending' || r.status === 'processing').length,
+    averageProcessingTime: mockRequests
       .filter(r => r.processing_time_seconds)
       .reduce((acc, r) => acc + (r.processing_time_seconds || 0), 0) / 
-      Math.max(requests.filter(r => r.processing_time_seconds).length, 1)
+      Math.max(mockRequests.filter(r => r.processing_time_seconds).length, 1)
   };
 
   useEffect(() => {
-    let result = requests;
+    let result = mockRequests;
     
     if (searchTerm) {
       result = result.filter(request => 
@@ -118,7 +117,7 @@ export function ComplianceDashboard() {
     }
     
     setFilteredRequests(result);
-  }, [searchTerm, statusFilter, requests]);
+  }, [searchTerm, statusFilter]);
 
   const getStatusIcon = (status: string) => {
     switch (status) {
@@ -153,7 +152,7 @@ export function ComplianceDashboard() {
       operation_type: 'AI Unlearning Operation',
       timestamp: request.created_at || new Date().toISOString(),
       zk_proof_hash: request.audit_trail?.zk_proof || 'proof_' + request.id.slice(0, 8),
-      bnb_tx_id: request.blockchain_tx_hash || '0x' + Math.random().toString(16).slice(2, 66),
+      stellar_tx_id: request.blockchain_tx_hash || '0x' + Math.random().toString(16).slice(2, 66),
       ipfs_cid: request.audit_trail?.ipfs_hash || 'Qm' + Math.random().toString(36).slice(2, 44),
       jurisdiction: 'EU' as const,
       regulatory_tags: ['GDPR Article 17', 'Right to be Forgotten', 'AI Transparency']

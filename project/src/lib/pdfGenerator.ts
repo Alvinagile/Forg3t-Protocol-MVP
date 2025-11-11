@@ -51,17 +51,17 @@ export class PDFGenerator {
                       leakScore < 0.3 ? 'REVIEW REQUIRED' : 'NON-COMPLIANT';
     const statusIcon = leakScore < 0.1 ? '✓' : leakScore < 0.3 ? '⚠' : '✗';
 
-    doc.setFillColor(...colors.primary);
+    doc.setFillColor(colors.primary[0], colors.primary[1], colors.primary[2]);
     doc.rect(0, 0, 210, 55, 'F');
     
-    doc.setFillColor(...colors.white);
+    doc.setFillColor(colors.white[0], colors.white[1], colors.white[2]);
     doc.roundedRect(15, 12, 30, 30, 5, 5, 'F');
-    doc.setTextColor(...colors.primary);
+    doc.setTextColor(colors.primary[0], colors.primary[1], colors.primary[2]);
     doc.setFontSize(16);
     doc.setFont('helvetica', 'bold');
     doc.text('F3', 28, 30);
     
-    doc.setTextColor(...colors.white);
+    doc.setTextColor(colors.white[0], colors.white[1], colors.white[2]);
     doc.setFontSize(24);
     doc.setFont('helvetica', 'bold');
     doc.text('FORG3T PROTOCOL', 50, 28);
@@ -78,30 +78,30 @@ export class PDFGenerator {
     })}`, 50, 50);
 
     let yPos = 70;
-    doc.setFillColor(...statusColor);
+    doc.setFillColor(statusColor[0], statusColor[1], statusColor[2]);
     doc.roundedRect(15, yPos, 65, 14, 3, 3, 'F');
     
-    doc.setTextColor(...colors.white);
+    doc.setTextColor(colors.white[0], colors.white[1], colors.white[2]);
     doc.setFontSize(11);
     doc.setFont('helvetica', 'bold');
     doc.text(`${statusIcon} ${statusText}`, 20, yPos + 9);
     
-    doc.setFillColor(...colors.lightGray);
+    doc.setFillColor(colors.lightGray[0], colors.lightGray[1], colors.lightGray[2]);
     doc.rect(145, yPos, 45, 45, 'F');
-    doc.setTextColor(...colors.darkGray);
+    doc.setTextColor(colors.darkGray[0], colors.darkGray[1], colors.darkGray[2]);
     doc.setFontSize(8);
     doc.text('BLOCKCHAIN', 155, yPos + 15);
     doc.text('VERIFICATION', 152, yPos + 22);
     doc.text('QR CODE', 160, yPos + 29);
-    doc.text(`TX: ${report.bnb_tx_id.slice(0, 8)}...`, 148, yPos + 40);
+    doc.text(`TX: ${report.stellar_tx_id.slice(0, 8)}...`, 148, yPos + 40);
 
     yPos += 60;
 
     const addSectionHeader = (title: string, yPosition: number): number => {
-      doc.setFillColor(...colors.lightGray);
+      doc.setFillColor(colors.lightGray[0], colors.lightGray[1], colors.lightGray[2]);
       doc.rect(15, yPosition, 180, 10, 'F');
       
-      doc.setTextColor(...colors.primary);
+      doc.setTextColor(colors.primary[0], colors.primary[1], colors.primary[2]);
       doc.setFontSize(11);
       doc.setFont('helvetica', 'bold');
       doc.text(title, 18, yPosition + 7);
@@ -110,7 +110,7 @@ export class PDFGenerator {
     };
 
     const addDataRow = (label: string, value: string, yPosition: number, bold = false): number => {
-      doc.setTextColor(...colors.text);
+      doc.setTextColor(colors.text[0], colors.text[1], colors.text[2]);
       doc.setFontSize(9.5);
       doc.setFont('helvetica', 'bold');
       doc.text(label + ':', 18, yPosition);
@@ -167,11 +167,11 @@ export class PDFGenerator {
     yPos = addSectionHeader('CRYPTOGRAPHIC VERIFICATION', yPos);
     yPos = addDataRow('Zero-Knowledge Proof', `zk-SNARK Generated`, yPos, true);
     yPos = addDataRow('Proof Hash (SHA-256)', report.zk_proof_hash.slice(0, 64), yPos);
-    yPos = addDataRow('Blockchain Network', 'Binance Smart Chain (BSC)', yPos);
-    yPos = addDataRow('Transaction Hash', report.bnb_tx_id, yPos);
+    yPos = addDataRow('Blockchain Network', 'Stellar Network (Soroban)', yPos);
+    yPos = addDataRow('Transaction Hash', report.stellar_tx_id, yPos);
     yPos = addDataRow('Block Confirmation', 'Immutably Recorded', yPos, true);
     yPos = addDataRow('IPFS Content Hash', report.ipfs_cid, yPos);
-    yPos = addDataRow('Verification URL', `bscscan.com/tx/${report.bnb_tx_id.slice(0, 16)}...`, yPos);
+    yPos = addDataRow('Verification URL', `stellarscan.io/tx/${report.stellar_tx_id.slice(0, 16)}...`, yPos);
     yPos += spacing.large;
 
     yPos = addSectionHeader('REGULATORY COMPLIANCE ASSESSMENT', yPos);
@@ -213,7 +213,7 @@ export class PDFGenerator {
     yPos += spacing.large;
 
     yPos = addSectionHeader('LEGAL DECLARATION', yPos);
-    doc.setTextColor(...colors.text);
+    doc.setTextColor(colors.text[0], colors.text[1], colors.text[2]);
     doc.setFontSize(8.5);
     doc.setFont('helvetica', 'normal');
     
@@ -223,16 +223,16 @@ export class PDFGenerator {
     doc.text(splitText, 18, yPos);
     yPos += splitText.length * 4 + spacing.xlarge;
 
-    doc.setFillColor(...colors.primary);
+    doc.setFillColor(colors.primary[0], colors.primary[1], colors.primary[2]);
     doc.rect(0, 275, 210, 22, 'F');
     
-    doc.setTextColor(...colors.white);
+    doc.setTextColor(colors.white[0], colors.white[1], colors.white[2]);
     doc.setFontSize(8.5);
     doc.setFont('helvetica', 'normal');
     doc.text('© 2024 Forg3t Protocol | Cryptographically Verified AI Unlearning', 15, 285);
     doc.text(`Document Hash: ${report.zk_proof_hash.slice(0, 32)}...`, 15, 291);
     
-    doc.setTextColor(...colors.white);
+    doc.setTextColor(colors.white[0], colors.white[1], colors.white[2]);
     doc.setFontSize(9);
     doc.text('Digitally Signed', 145, 285);
     doc.setFontSize(8.5);

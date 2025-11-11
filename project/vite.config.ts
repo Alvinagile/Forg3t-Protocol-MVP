@@ -7,4 +7,25 @@ export default defineConfig({
   optimizeDeps: {
     exclude: ['lucide-react'],
   },
+  server: {
+    host: true,
+    strictPort: true,
+    port: 4173,
+  },
+  preview: {
+    host: true,
+    strictPort: true,
+    port: 4173,
+  },
+  build: {
+    rollupOptions: {
+      output: {
+        manualChunks: {
+          vendor: ['react', 'react-dom', 'react-router-dom'],
+          ui: ['lucide-react'],
+          utils: ['@supabase/supabase-js', '@huggingface/transformers'],
+        }
+      }
+    }
+  }
 });

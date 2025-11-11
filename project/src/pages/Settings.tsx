@@ -1,8 +1,7 @@
-import React, { useState } from 'react';
-import { Mail, Lock, User, Save, AlertCircle, CheckCircle, RefreshCw, Shield } from 'lucide-react';
+import React, { useState, useEffect } from 'react';
+import { Mail, Lock, User, Save, AlertCircle, CheckCircle, RefreshCw } from 'lucide-react';
 import { useAuth } from '../hooks/useAuth';
-import { supabase, authService } from '../lib/supabase';
-import { DebugLogger } from '../lib/debug';
+import { supabase } from '../lib/supabase';
 import { UserService } from '../lib/userService';
 
 export function Settings() {
@@ -17,7 +16,6 @@ export function Settings() {
   const [currentPassword, setCurrentPassword] = useState('');
   const [newPassword, setNewPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
-  const [showCurrentPassword, setShowCurrentPassword] = useState(false);
   const [userProfile, setUserProfile] = useState<any>(null);
 
   // Load user profile on mount
@@ -29,7 +27,7 @@ export function Settings() {
       if (profileResult.success) {
         setUserProfile(profileResult.user);
       } else {
-        DebugLogger.error('Failed to load user profile', profileResult.error);
+        console.error('Failed to load user profile', profileResult.error);
       }
     };
     
@@ -55,7 +53,17 @@ export function Settings() {
       return;
     }
     try {
-      const { error } = await supabase.auth.updateUser({ email });
+      // Check if this is a real Supabase client
+      if (!('updateUser' in supabase.auth)) {
+        setMessage({ 
+          type: 'error', 
+          text: '❌ Email update is not available in offline mode' 
+        });
+        setEmailLoading(false);
+        return;
+      }
+      
+      const { error } = await (supabase.auth as any).updateUser({ email });
       
       if (error) {
         // Check for specific error types
@@ -87,7 +95,7 @@ export function Settings() {
       }, 5000);
       
     } catch (error) {
-      DebugLogger.error('Email update failed', error);
+      console.error('Email update failed', error);
       
       if (error instanceof Error) {
         if (error.message.includes('rate_limit')) {
@@ -183,7 +191,17 @@ export function Settings() {
         return;
       }
       
-      const { error } = await supabase.auth.updateUser({ 
+      // Check if this is a real Supabase client
+      if (!('updateUser' in supabase.auth)) {
+        setMessage({ 
+          type: 'error', 
+          text: '❌ Password update is not available in offline mode' 
+        });
+        setPasswordLoading(false);
+        return;
+      }
+      
+      const { error } = await (supabase.auth as any).updateUser({ 
         password: newPassword 
       });
       
@@ -212,7 +230,7 @@ export function Settings() {
       }, 15000);
       
     } catch (error) {
-      DebugLogger.error('Password update failed', error);
+      console.error('Password update failed', error);
       setMessage({ 
         type: 'error', 
         text: error instanceof Error ? 
@@ -258,7 +276,7 @@ export function Settings() {
   const handleSignOut = async () => {
     const confirmSignOut = window.confirm('Are you sure you want to sign out?');
     if (confirmSignOut) {
-      await authService.signOut();
+      await supabase.auth.signOut();
       window.location.href = '/signin';
     }
   };

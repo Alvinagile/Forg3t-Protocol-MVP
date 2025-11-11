@@ -1,17 +1,15 @@
-import React, { useState } from 'react';
+import { useState } from 'react';
 import { Link, useNavigate, useLocation } from 'react-router-dom';
-import { LogOut, Settings, Shield, Menu, X, BarChart } from 'lucide-react';
-import { useAuth } from '../hooks/useAuth';
-import { authService } from '../lib/supabase';
+import { LogOut, Settings, Menu, X, BarChart } from 'lucide-react';
+import { supabase } from '../lib/supabase';
 
 export function Navbar() {
-  const { user } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
   const [isMenuOpen, setIsMenuOpen] = useState(false);
 
   const handleSignOut = async () => {
-    await authService.signOut();
+    await supabase.auth.signOut();
     navigate('/signin');
   };
 
@@ -25,7 +23,6 @@ export function Navbar() {
             <span className="text-white text-xl font-bold">Forg3t Protocol</span>
           </Link>
 
-          {/* Desktop Navigation */}
           <div className="hidden md:flex items-center space-x-8">
             <Link
               to="/dash"
@@ -56,7 +53,6 @@ export function Navbar() {
             </button>
           </div>
 
-          {/* Mobile menu button */}
           <div className="md:hidden">
             <button
               onClick={() => setIsMenuOpen(!isMenuOpen)}
@@ -67,7 +63,6 @@ export function Navbar() {
           </div>
         </div>
 
-        {/* Mobile Navigation */}
         {isMenuOpen && (
           <div className="md:hidden">
             <div className="px-2 pt-2 pb-3 space-y-1 border-t border-[#60a5fa]/20">

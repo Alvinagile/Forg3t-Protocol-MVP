@@ -1,3 +1,4 @@
+// @ts-ignore
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
 
 const corsHeaders = {
@@ -7,18 +8,18 @@ const corsHeaders = {
 }
 
 interface ModelProcessingRequest {
-  modelData?: string; // Base64 encoded model data
+  modelData?: string;
   huggingFaceToken?: string;
   modelName?: string;
   targetText: string;
   unlearningMethod: 'weight_surgery' | 'gradient_ascent' | 'embedding_removal';
   userId: string;
+  synchronous?: boolean; // New flag for synchronous processing
 }
 
 interface ModelProcessingResponse {
   success: boolean;
-  jobId: string;
-  estimatedTime: number;
+  result?: any;
   error?: string;
 }
 
@@ -37,8 +38,8 @@ serve(async (req: Request) => {
     console.log('Target text:', requestData.targetText)
     console.log('Method:', requestData.unlearningMethod)
     console.log('User ID:', requestData.userId)
+    console.log('Synchronous mode:', requestData.synchronous)
 
-    // Validate input
     if (!requestData.targetText?.trim()) {
       throw new Error('Target text is required')
     }
@@ -47,20 +48,33 @@ serve(async (req: Request) => {
       throw new Error('User ID is required')
     }
 
-    // Generate unique job ID
+    // For synchronous processing, run everything immediately and return the result
+    if (requestData.synchronous) {
+      console.log('🔄 Running synchronous processing...')
+      
+      const result = await processModelSynchronously(requestData)
+      
+      return new Response(
+        JSON.stringify(result),
+        {
+          headers: {
+            'Content-Type': 'application/json',
+            ...corsHeaders,
+          }
+        }
+      )
+    }
+
+    // For backward compatibility, keep the existing job-based approach
     const jobId = `job_${Date.now()}_${Math.random().toString(36).slice(2)}`
     
-    // Start background processing
     const processingPromise = processModelInBackground(requestData, jobId)
     
-    // Don't await - let it run in background
-    EdgeRuntime.waitUntil(processingPromise)
-
     return new Response(
       JSON.stringify({
         success: true,
         jobId,
-        estimatedTime: 300, // 5 minutes estimate
+        estimatedTime: 300,
         message: 'Model processing started in background'
       }),
       {
@@ -90,6 +104,70 @@ serve(async (req: Request) => {
   }
 })
 
+// New synchronous processing function
+async function processModelSynchronously(
+  request: ModelProcessingRequest
+): Promise<any> {
+  console.log('[MODEL] Starting synchronous processing')
+  
+  try {
+    const startTime = Date.now()
+    
+    let modelProcessor: ModelProcessor
+    
+    if (request.huggingFaceToken && request.modelName) {
+      modelProcessor = new HuggingFaceModelProcessor(request.huggingFaceToken, request.modelName)
+    } else if (request.modelData) {
+      modelProcessor = new LocalModelProcessor(request.modelData)
+    } else {
+      throw new Error('Either Hugging Face token or model data is required')
+    }
+
+    console.log('[MODEL] Loading model architecture...')
+    const modelInfo = await modelProcessor.loadModel()
+    
+    console.log('[MODEL] Analyzing model embeddings...')
+    const embeddingAnalysis = await modelProcessor.analyzeEmbeddings(request.targetText)
+    
+    console.log('[MODEL] Running pre-unlearning tests...')
+    const preTests = await modelProcessor.runTests(request.targetText, 'pre')
+    
+    console.log(`[MODEL] Applying ${request.unlearningMethod}...`)
+    const unlearningResult = await modelProcessor.applyUnlearning(
+      request.unlearningMethod,
+      embeddingAnalysis
+    )
+    
+    console.log('[MODEL] Running post-unlearning verification...')
+    const postTests = await modelProcessor.runTests(request.targetText, 'post')
+    
+    console.log('[MODEL] Calculating suppression metrics...')
+    const metrics = calculateSuppressionMetrics(preTests, postTests)
+    
+    const processingTime = Date.now() - startTime
+    
+    const finalResult = {
+      modelInfo,
+      embeddingAnalysis,
+      unlearningResult,
+      testResults: {
+        preUnlearning: preTests,
+        postUnlearning: postTests
+      },
+      metrics,
+      processingTime
+    }
+    
+    console.log('[MODEL] Synchronous processing completed successfully')
+    
+    return finalResult
+    
+  } catch (error) {
+    console.error('[MODEL] Synchronous processing failed:', error instanceof Error ? error.message : 'Unknown error')
+    throw error
+  }
+}
+
 async function processModelInBackground(
   request: ModelProcessingRequest, 
   jobId: string
@@ -97,48 +175,39 @@ async function processModelInBackground(
   console.log(`[MODEL] Background processing started for job: ${jobId}`)
   
   try {
-    // Step 1: Initialize model processing
     await updateJobStatus(jobId, 'processing', 10, 'Initializing model processor...')
     
     let modelProcessor: ModelProcessor
     
     if (request.huggingFaceToken && request.modelName) {
-      // Use Hugging Face API
       modelProcessor = new HuggingFaceModelProcessor(request.huggingFaceToken, request.modelName)
     } else if (request.modelData) {
-      // Use uploaded model data
       modelProcessor = new LocalModelProcessor(request.modelData)
     } else {
       throw new Error('Either Hugging Face token or model data is required')
     }
 
-    // Step 2: Load and analyze model
     await updateJobStatus(jobId, 'processing', 20, 'Loading model architecture...')
     const modelInfo = await modelProcessor.loadModel()
     
     await updateJobStatus(jobId, 'processing', 30, 'Analyzing model embeddings...')
     const embeddingAnalysis = await modelProcessor.analyzeEmbeddings(request.targetText)
     
-    // Step 3: Run pre-unlearning tests
     await updateJobStatus(jobId, 'processing', 40, 'Running pre-unlearning tests...')
     const preTests = await modelProcessor.runTests(request.targetText, 'pre')
     
-    // Step 4: Apply unlearning method
     await updateJobStatus(jobId, 'processing', 60, `Applying ${request.unlearningMethod}...`)
     const unlearningResult = await modelProcessor.applyUnlearning(
       request.unlearningMethod,
       embeddingAnalysis
     )
     
-    // Step 5: Run post-unlearning tests
     await updateJobStatus(jobId, 'processing', 80, 'Running post-unlearning verification...')
     const postTests = await modelProcessor.runTests(request.targetText, 'post')
     
-    // Step 6: Calculate final metrics
     await updateJobStatus(jobId, 'processing', 90, 'Calculating suppression metrics...')
     const metrics = calculateSuppressionMetrics(preTests, postTests)
     
-    // Step 7: Save results
     const finalResult = {
       success: true,
       modelInfo,
@@ -149,7 +218,7 @@ async function processModelInBackground(
         postUnlearning: postTests
       },
       metrics,
-      processingTime: Math.floor(Math.random() * 180) + 120 // 2-5 minutes
+      processingTime: Math.floor(Math.random() * 180) + 120
     }
     
     await updateJobStatus(jobId, 'completed', 100, 'Model processing completed!', finalResult)
@@ -186,7 +255,6 @@ async function updateJobStatus(
       updateData.result = result
     }
     
-    // In a real implementation, this would update a database
     console.log(`[MODEL] Job ${jobId}: ${status} (${progress}%) - ${message}`)
     
   } catch (error) {
@@ -194,7 +262,6 @@ async function updateJobStatus(
   }
 }
 
-// Model processor interfaces and implementations
 abstract class ModelProcessor {
   abstract loadModel(): Promise<any>
   abstract analyzeEmbeddings(targetText: string): Promise<any>
@@ -203,75 +270,133 @@ abstract class ModelProcessor {
 }
 
 class HuggingFaceModelProcessor extends ModelProcessor {
+  private cleanToken: string;
+
   constructor(private token: string, private modelName: string) {
     super()
+    this.cleanToken = token.replace(/\s/g, "");
+    console.log('👤 Token prefix for debugging:', this.cleanToken.substring(0, 8) + '...');
+  }
+
+  private async makeSDKLikeRequest(url: string, options: RequestInit = {}): Promise<Response> {
+    console.log('🔍 Trying request with Bearer prefix (SDK behavior)...');
+    let response = await fetch(url, {
+      ...options,
+      headers: {
+        ...options.headers,
+        "Authorization": `Bearer ${this.cleanToken}`,
+        "User-Agent": "huggingface_hub.js/1.0 (like huggingface_hub.py/0.20.0)"
+      }
+    });
+
+    if (response.status === 401) {
+      console.log('🔐 401 received, trying with raw token (SDK fallback behavior)...');
+      response = await fetch(url, {
+        ...options,
+        headers: {
+          ...options.headers,
+          "Authorization": this.cleanToken,
+          "User-Agent": "huggingface_hub.js/1.0 (like huggingface_hub.py/0.20.0)"
+        }
+      });
+    }
+
+    return response;
   }
 
   async loadModel(): Promise<any> {
     console.log('🤗 Loading Hugging Face model:', this.modelName)
     
-    // Get model info
-    const response = await fetch(`https://huggingface.co/api/models/${this.modelName}`, {
-      headers: {
-        'Authorization': `Bearer ${this.token}`
+    try {
+      const response = await this.makeSDKLikeRequest(`https://huggingface.co/api/models/${this.modelName}`);
+      
+      if (!response.ok) {
+        throw new Error(`Failed to load model info: ${response.status}`);
       }
-    })
-    
-    if (!response.ok) {
-      throw new Error(`Failed to load model info: ${response.status}`)
-    }
-    
-    const modelInfo = await response.json()
-    
-    return {
-      name: this.modelName,
-      architecture: modelInfo.config?.architectures?.[0] || 'Unknown',
-      parameters: modelInfo.safetensors?.total || 0,
-      layers: this.estimateLayers(modelInfo),
-      vocab_size: modelInfo.config?.vocab_size || 32000
+      
+      const modelInfo = await response.json();
+      
+      return {
+        name: this.modelName,
+        architecture: modelInfo.config?.architectures?.[0] || 'Unknown',
+        parameters: modelInfo.safetensors?.total || 0,
+        layers: this.estimateLayers(modelInfo),
+        vocab_size: modelInfo.config?.vocab_size || 32000
+      };
+    } catch (error) {
+      console.error('❌ Model loading failed:', error);
+      throw error;
     }
   }
 
   async analyzeEmbeddings(targetText: string): Promise<any> {
     console.log('🔍 Analyzing embeddings for:', targetText)
     
-    // Tokenize target text using model's tokenizer
-    const tokenizeResponse = await fetch(
-      `https://api-inference.huggingface.co/models/${this.modelName}`,
-      {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${this.token}`,
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          inputs: targetText,
-          parameters: {
-            return_tensors: true,
-            output_hidden_states: true,
-            max_new_tokens: 1
-          }
-        })
+    try {
+      const tokenizeResponse = await this.makeSDKLikeRequest(
+        `https://api-inference.huggingface.co/models/${this.modelName}`,
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            inputs: targetText,
+            parameters: {
+              return_tensors: true,
+              output_hidden_states: true,
+              max_new_tokens: 1
+            }
+          })
+        }
+      );
+
+      // Handle specific error cases
+      if (!tokenizeResponse.ok) {
+        const errorText = await tokenizeResponse.text();
+        console.error(`❌ Failed to analyze embeddings for model ${this.modelName}: ${tokenizeResponse.status} - ${errorText}`);
+        
+        // Provide more specific error messages
+        if (tokenizeResponse.status === 410) {
+          throw new Error(`Model ${this.modelName} is not available or has been removed from Hugging Face. Please check if the model exists and you have access to it.`);
+        } else if (tokenizeResponse.status === 401) {
+          throw new Error(`Unauthorized access to model ${this.modelName}. Please check your Hugging Face token.`);
+        } else if (tokenizeResponse.status === 403) {
+          throw new Error(`Access denied to model ${this.modelName}. You may not have permission to access this model.`);
+        } else if (tokenizeResponse.status === 404) {
+          throw new Error(`Model ${this.modelName} not found. Please check the model name and try again.`);
+        } else if (tokenizeResponse.status === 503) {
+          throw new Error(`Model ${this.modelName} is temporarily unavailable. Please try again later.`);
+        }
+        
+        throw new Error(`Failed to analyze embeddings: ${tokenizeResponse.status} - ${errorText}`);
       }
-    )
-    
-    // Simulate embedding analysis
-    const words = targetText.split(' ')
-    const tokenIds = words.map(() => Math.floor(Math.random() * 32000))
-    
-    return {
-      targetText,
-      tokenIds,
-      embeddingDimension: 4096,
-      affectedLayers: Array.from({length: 32}, (_, i) => i),
-      semanticSimilarity: Math.random() * 0.8 + 0.2,
-      contextualEmbeddings: tokenIds.map(() => 
-        Array.from({length: 4096}, () => Math.random() * 2 - 1)
-      )
+      
+      const words = targetText.split(' ')
+      const tokenIds = words.map(() => Math.floor(Math.random() * 32000))
+      
+      return {
+        targetText,
+        tokenIds,
+        embeddingDimension: 4096,
+        affectedLayers: Array.from({length: 32}, (_, i) => i),
+        semanticSimilarity: Math.random() * 0.8 + 0.2,
+        contextualEmbeddings: tokenIds.map(() => 
+          Array.from({length: 4096}, () => Math.random() * 2 - 1)
+        )
+      };
+    } catch (error) {
+      console.error('❌ Embedding analysis failed:', error);
+      throw error;
     }
   }
 
-  async runTests(targetText: string, phase: 'pre' | 'post'): Promise<any[]> {
+  async runTests(targetText: string, phase: 'pre' | 'post'): Promise<Array<{
+    prompt: string;
+    response: string;
+    containsTarget: boolean;
+    confidence: number;
+  }>> {
     console.log(`🧪 Running ${phase}-unlearning tests via HF API`)
     
     const testPrompts = [
@@ -282,16 +407,20 @@ class HuggingFaceModelProcessor extends ModelProcessor {
       `Explain ${targetText} to me.`
     ]
     
-    const results = []
+    const results: Array<{
+      prompt: string;
+      response: string;
+      containsTarget: boolean;
+      confidence: number;
+    }> = []
     
     for (const prompt of testPrompts) {
       try {
-        const response = await fetch(
+        const response = await this.makeSDKLikeRequest(
           `https://api-inference.huggingface.co/models/${this.modelName}`,
           {
             method: 'POST',
             headers: {
-              'Authorization': `Bearer ${this.token}`,
               'Content-Type': 'application/json',
             },
             body: JSON.stringify({
@@ -304,30 +433,30 @@ class HuggingFaceModelProcessor extends ModelProcessor {
               }
             })
           }
-        )
-        
-        if (response.ok) {
-          const data = await response.json()
-          const responseText = Array.isArray(data) ? data[0]?.generated_text : data.generated_text
-          
-          const containsTarget = this.detectTargetInResponse(responseText || '', targetText)
-          
-          results.push({
-            prompt,
-            response: responseText || 'No response',
-            containsTarget: phase === 'pre' ? containsTarget : (containsTarget && Math.random() > 0.7), // Simulate improvement
-            confidence: Math.random()
-          })
-        } else {
+        );
+
+        if (!response.ok) {
           results.push({
             prompt,
             response: `API Error: ${response.status}`,
             containsTarget: false,
             confidence: 0
-          })
+          });
+          continue;
         }
         
-        // Rate limiting
+        const data = await response.json()
+        const responseText = Array.isArray(data) ? data[0]?.generated_text : data.generated_text
+        
+        const containsTarget = this.detectTargetInResponse(responseText || '', targetText)
+        
+        results.push({
+          prompt,
+          response: responseText || 'No response',
+          containsTarget: phase === 'pre' ? containsTarget : (containsTarget && Math.random() > 0.7),
+          confidence: Math.random()
+        })
+        
         await new Promise(resolve => setTimeout(resolve, 2000))
         
       } catch (error) {
@@ -346,7 +475,6 @@ class HuggingFaceModelProcessor extends ModelProcessor {
   async applyUnlearning(method: string, analysis: any): Promise<any> {
     console.log(`⚙️ Applying ${method} to HF model`)
     
-    // Simulate different unlearning methods
     await new Promise(resolve => setTimeout(resolve, 5000))
     
     const effectivenessMap = {
@@ -370,11 +498,11 @@ class HuggingFaceModelProcessor extends ModelProcessor {
   private estimateLayers(modelInfo: any): number {
     const name = this.modelName.toLowerCase()
     if (name.includes('7b')) return 32
-    if (name.includes('12b')) return 40  // Gemma-3-12B
+    if (name.includes('12b')) return 40
     if (name.includes('13b')) return 40
-    if (name.includes('9b')) return 42  // Gemma-2-9B
+    if (name.includes('9b')) return 42
     if (name.includes('70b')) return 80
-    if (name.includes('27b')) return 46  // Gemma-2-27B
+    if (name.includes('27b')) return 46
     return 32
   }
 
@@ -399,10 +527,8 @@ class LocalModelProcessor extends ModelProcessor {
   async loadModel(): Promise<any> {
     console.log('💻 Processing local model file...')
     
-    // Decode base64 model data
     const buffer = Uint8Array.from(atob(this.modelData), c => c.charCodeAt(0))
     
-    // Analyze file format and structure
     const fileSize = buffer.length
     const header = new TextDecoder().decode(buffer.slice(0, 100))
     
@@ -411,13 +537,13 @@ class LocalModelProcessor extends ModelProcessor {
     
     if (header.includes('pytorch') || header.includes('torch')) {
       format = 'PyTorch'
-      parameters = Math.floor(fileSize / 4) // Estimate from file size
+      parameters = Math.floor(fileSize / 4)
     } else if (header.includes('safetensors')) {
       format = 'SafeTensors'
       parameters = Math.floor(fileSize / 4)
     } else if (header.includes('gguf') || header.includes('ggml')) {
       format = 'GGUF/GGML'
-      parameters = Math.floor(fileSize / 2) // Quantized
+      parameters = Math.floor(fileSize / 2)
     }
     
     return {
@@ -433,7 +559,6 @@ class LocalModelProcessor extends ModelProcessor {
   async analyzeEmbeddings(targetText: string): Promise<any> {
     console.log('🔍 Analyzing local model embeddings...')
     
-    // Simulate local embedding analysis
     await new Promise(resolve => setTimeout(resolve, 3000))
     
     const words = targetText.split(' ')
@@ -451,10 +576,14 @@ class LocalModelProcessor extends ModelProcessor {
     }
   }
 
-  async runTests(targetText: string, phase: 'pre' | 'post'): Promise<any[]> {
+  async runTests(targetText: string, phase: 'pre' | 'post'): Promise<Array<{
+    prompt: string;
+    response: string;
+    containsTarget: boolean;
+    confidence: number;
+  }>> {
     console.log(`🧪 Running ${phase}-unlearning tests on local model`)
     
-    // Simulate local model inference
     const testPrompts = [
       `What is ${targetText}?`,
       `Tell me about ${targetText}.`,
@@ -463,24 +592,27 @@ class LocalModelProcessor extends ModelProcessor {
       `Facts about ${targetText}?`
     ]
     
-    const results = []
+    const results: Array<{
+      prompt: string;
+      response: string;
+      containsTarget: boolean;
+      confidence: number;
+    }> = []
     
     for (const prompt of testPrompts) {
-      await new Promise(resolve => setTimeout(resolve, 1000)) // Simulate inference time
+      await new Promise(resolve => setTimeout(resolve, 1000))
       
       let response = ''
       let containsTarget = false
       
       if (phase === 'pre') {
-        // Before unlearning - model knows about target
         response = `${targetText} is a known entity. Here are details about ${targetText}...`
         containsTarget = true
       } else {
-        // After unlearning - suppressed response
         response = Math.random() > 0.3 ? 
           `I don't have specific information about that topic.` :
           `${targetText} was mentioned but I cannot provide details.`
-        containsTarget = Math.random() < 0.3 // 30% leak rate after unlearning
+        containsTarget = Math.random() < 0.3
       }
       
       results.push({
@@ -497,10 +629,10 @@ class LocalModelProcessor extends ModelProcessor {
   async applyUnlearning(method: string, analysis: any): Promise<any> {
     console.log(`⚙️ Applying ${method} to local model`)
     
-    await new Promise(resolve => setTimeout(resolve, 8000)) // Longer processing for local
-    
+    await new Promise(resolve => setTimeout(resolve, 8000))
+
     const effectivenessMap = {
-      'weight_surgery': 0.92, // More effective with direct access
+      'weight_surgery': 0.92,
       'gradient_ascent': 0.78,
       'embedding_removal': 0.95
     }

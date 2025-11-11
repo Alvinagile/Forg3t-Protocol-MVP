@@ -9,20 +9,12 @@ import {
   FileSearch, 
   Gavel, 
   Code, 
-  User, 
   LogOut,
   Menu,
   X
 } from 'lucide-react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { authService } from '../../lib/supabase';
-
-interface UserWithRole {
-  id: string;
-  email: string;
-  package_type: 'individual' | 'enterprise' | 'validator' | 'regulator' | 'admin';
-  created_at: string;
-}
 
 export function DashboardLayout({ children }: { children: React.ReactNode }) {
   const { user, loading } = useAuth();
@@ -66,7 +58,6 @@ export function DashboardLayout({ children }: { children: React.ReactNode }) {
   }, [user]);
 
   const getMenuItems = () => {
-    // For development/testing, show all menu items regardless of user role
     const allItems = [
       { name: 'Compliance', href: '/dash/compliance', icon: LayoutDashboard },
       { name: 'Validator', href: '/dash/validator', icon: Shield },

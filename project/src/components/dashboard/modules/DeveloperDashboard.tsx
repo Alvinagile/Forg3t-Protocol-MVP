@@ -1,9 +1,8 @@
-import React, { useState } from 'react';
+import { useState } from 'react';
 import { 
   Code, 
   Key, 
   Webhook, 
-  BarChart, 
   Copy, 
   Eye, 
   Filter,
@@ -217,17 +216,6 @@ export function DeveloperDashboard() {
         return 'text-red-400';
       case 'pending':
         return 'text-yellow-400';
-      default:
-        return 'text-gray-400';
-    }
-  };
-
-  const getKeyStatusColor = (status: string) => {
-    switch (status) {
-      case 'active':
-        return 'text-green-400';
-      case 'disabled':
-        return 'text-gray-400';
       default:
         return 'text-gray-400';
     }

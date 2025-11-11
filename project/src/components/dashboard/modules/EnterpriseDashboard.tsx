@@ -1,6 +1,5 @@
-import React, { useState } from 'react';
+import { useState } from 'react';
 import { 
-  Building, 
   BarChart, 
   TrendingUp, 
   Coins,
@@ -9,7 +8,6 @@ import {
   Settings,
   Filter,
   Search,
-  Play,
   Eye
 } from 'lucide-react';
 import { PDFGenerator } from '../../../lib/pdfGenerator';
@@ -127,19 +125,6 @@ export function EnterpriseDashboard() {
   const totalTokens = tokenUsage.reduce((sum, usage) => sum + usage.tokens_used, 0);
   const totalCost = tokenUsage.reduce((sum, usage) => sum + usage.cost, 0);
 
-  const getStatusColor = (status: string) => {
-    switch (status) {
-      case 'active':
-        return 'text-green-400';
-      case 'inactive':
-        return 'text-gray-400';
-      case 'error':
-        return 'text-red-400';
-      default:
-        return 'text-gray-400';
-    }
-  };
-
   const getStatusBadgeColor = (status: string) => {
     switch (status) {
       case 'active':
@@ -160,7 +145,7 @@ export function EnterpriseDashboard() {
       operation_type: 'AI Unlearning Operation',
       timestamp: certificate.generated_at,
       zk_proof_hash: 'zk_' + certificate.id.slice(0, 64),
-      bnb_tx_id: '0x' + Math.random().toString(16).slice(2, 66),
+      stellar_tx_id: '0x' + Math.random().toString(16).slice(2, 66),
       ipfs_cid: certificate.ipfs_hash || 'Qm' + Math.random().toString(36).slice(2, 44),
       jurisdiction: 'EU' as const,
       regulatory_tags: ['GDPR Article 17', 'Right to be Forgotten', 'AI Transparency']

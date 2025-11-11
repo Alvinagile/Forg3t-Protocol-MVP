@@ -23,3 +23,15 @@ dist-ssr
 *.sln
 *.sw?
 .env
+
+.vercel
+
+# Local unlearning artifacts
+local_models/
+outputs/
+venv/
+*.pyc
+__pycache__/
+
+# Additional Python cache files
+**/__pycache__/

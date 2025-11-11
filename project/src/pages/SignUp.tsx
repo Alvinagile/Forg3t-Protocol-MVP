@@ -1,9 +1,7 @@
 import React, { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { Mail, Lock, AlertCircle, CheckCircle } from 'lucide-react';
+import { Mail, Lock, AlertCircle } from 'lucide-react';
 import { authService } from '../lib/supabase';
-import { DebugLogger } from '../lib/debug';
-import { UserService } from '../lib/userService';
 
 export function SignUp() {
   const [email, setEmail] = useState('');
@@ -18,8 +16,6 @@ export function SignUp() {
     setLoading(true);
     setError('');
     
-    console.log('🚀 Starting signup process...');
-
     if (password !== confirmPassword) {
       setError('Passwords do not match');
       setLoading(false);
@@ -36,26 +32,28 @@ export function SignUp() {
       const { data, error } = await authService.signUp(email, password, 'individual');
 
       if (error) {
-        console.warn('⚠️ Signup failed:', error.message);
-        
         if (error.message.includes('User already registered') || 
             error.message.includes('user_already_exists') ||
             error.code === 'user_already_exists') {
           setError('This email address is already registered. Please sign in or use a different email.');
         } else if (error.message.includes('Invalid email')) {
           setError('Please enter a valid email address.');
+        } else if (error.message.includes('Supabase not configured')) {
+          setError('The application is not properly configured to connect to Supabase. Please check the configuration.');
         } else {
           setError(`Account could not be created: ${error.message}`);
         }
-      } else if (data.user) {
-        console.log('✅ Signup successful, redirecting to onboarding');
-        navigate('/onboarding');
+      } else if (data.user || data.session) {
+        if (!data.user && data.session) {
+          setError('Please check your email for a confirmation link. After confirming, sign in to continue.');
+        } else {
+          navigate('/onboarding');
+        }
       } else {
-        setError('Signup failed: No user data returned');
+        setError('Please check your email for a confirmation link. After confirming, sign in to continue.');
       }
       
     } catch (error) {
-      console.error('💥 Unexpected signup error:', error);
       setError('An unexpected error occurred. Please try again.');
     }
 

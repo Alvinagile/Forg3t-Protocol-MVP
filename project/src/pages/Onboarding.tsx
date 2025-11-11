@@ -1,10 +1,8 @@
-import React, { useState } from 'react';
+import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Shield, Check, Users, Building } from 'lucide-react';
+import { Check, Users, Building, AlertCircle } from 'lucide-react';
 import { supabase } from '../lib/supabase';
-import { UserService } from '../lib/userService';
 import { useAuth } from '../hooks/useAuth';
-import { DebugLogger } from '../lib/debug';
 
 export function Onboarding() {
   const { user } = useAuth();
@@ -24,10 +22,8 @@ export function Onboarding() {
     setError('');
 
     try {
-      console.log('🎯 Completing onboarding process for package:', selectedPackage);
-      
       // Ensure user profile exists
-      const { error: profileError } = await supabase
+      const { error: profileError } = await (supabase as any)
         .from('users')
         .insert({
           id: user.id,
@@ -38,22 +34,21 @@ export function Onboarding() {
         .single();
 
       if (profileError && profileError.code !== '23505') {
-        console.warn('⚠️ Profile creation warning:', profileError.message);
         // Don't fail the process for profile creation issues
       }
 
       // Update auth metadata
-      const { error: authError } = await supabase.auth.updateUser({
-        data: { package_type: selectedPackage }
-      });
+      if ('updateUser' in supabase.auth) {
+        const { error: authError } = await (supabase.auth as any).updateUser({
+          data: { package_type: selectedPackage }
+        });
 
-      if (authError) {
-        console.warn('⚠️ Failed to update auth metadata:', authError.message);
-        // Don't fail the process for metadata update failure
+        if (authError) {
+          // Don't fail the process for metadata update failure
+        }
       }
 
-      console.log('✅ Onboarding completed successfully');
-      navigate('/dashboard');
+      navigate('/dash');
       
     } catch (error) {
       console.error('💥 Onboarding failed:', error);
