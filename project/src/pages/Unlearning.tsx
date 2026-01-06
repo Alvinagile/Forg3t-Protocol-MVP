@@ -10,11 +10,11 @@ import { LocalUnlearningClient, LocalUnlearningConfig } from '../local/runLocalC
 export function Unlearning() {
   const { user } = useAuth();
   const [activeTab, setActiveTab] = useState<'blackbox' | 'whitebox'>('blackbox');
-  
+
   const [apiKey, setApiKey] = useState('');
   const [blackboxLoading, setBlackboxLoading] = useState(false);
   const [blackboxProgress, setBlackboxProgress] = useState({ percent: 0, message: '' });
-  
+
   const [assistantId, setAssistantId] = useState('');
   const [targetText, setTargetText] = useState('');
   const [reason, setReason] = useState('');
@@ -43,7 +43,7 @@ export function Unlearning() {
         setLocalServerOnline(false);
       }
     };
-    
+
     checkServerStatus();
     const interval = setInterval(checkServerStatus, 30000);
     return () => clearInterval(interval);
@@ -57,20 +57,20 @@ export function Unlearning() {
         alert('Server is online and ready to use!');
       } else {
         alert('Server is offline. Please make sure the local server is running.\n\n' +
-              'To start the local server:\n' +
-              '1. Make sure you have Python installed\n' +
-              '2. Navigate to the local-server-package directory\n' +
-              '3. Run: python server.py\n' +
-              '4. The server should start on port 8787');
+          'To start the local server:\n' +
+          '1. Make sure you have Python installed\n' +
+          '2. Navigate to the local-server-package directory\n' +
+          '3. Run: python server.py\n' +
+          '4. The server should start on port 8787');
       }
     } catch (error) {
       setLocalServerOnline(false);
       alert('Failed to check server status. Please make sure the local server is running.\n\n' +
-            'To start the local server:\n' +
-            '1. Make sure you have Python installed\n' +
-            '2. Navigate to the local-server-package directory\n' +
-            '3. Run: python server.py\n' +
-            '4. The server should start on port 8787');
+        'To start the local server:\n' +
+        '1. Make sure you have Python installed\n' +
+        '2. Navigate to the local-server-package directory\n' +
+        '3. Run: python server.py\n' +
+        '4. The server should start on port 8787');
     }
   };
 
@@ -79,7 +79,7 @@ export function Unlearning() {
       alert('Please enter your OpenAI API key with full access permissions');
       return;
     }
-    
+
     if (!assistantId.trim()) {
       alert('Please enter your Assistant ID');
       return;
@@ -96,7 +96,7 @@ export function Unlearning() {
 
     try {
       const engine = new AssistantsSuppressionEngine(apiKey);
-      
+
       const config = {
         apiKey: apiKey,
         assistantId: assistantId,
@@ -110,21 +110,21 @@ export function Unlearning() {
           setBlackboxProgress({ percent, message });
         }
       );
-      
+
       setAssistantResults(results);
       setBlackboxProgress({ percent: 100, message: 'Suppression protocol completed!' });
-      
+
       if (results.success && user) {
         await saveAssistantSuppressionRequest(results);
       }
     } catch (error) {
       console.error('Unlearning process failed', error);
-      
+
       let errorMessage = error instanceof Error ? error.message : 'Unknown error';
       if (errorMessage.includes('403') || errorMessage.includes('insufficient permissions')) {
         errorMessage = 'API Key Permission Error: Please create a new OpenAI API key with full access permissions at https://platform.openai.com/api-keys';
       }
-      
+
       setAssistantResults({
         success: false,
         assistantId: assistantId,
@@ -157,8 +157,8 @@ export function Unlearning() {
         operation_type: 'AI Unlearning - Assistant Suppression',
         timestamp: new Date().toISOString(),
         zk_proof_hash: currentAssistantResults.assistantId || 'proof_' + Date.now().toString(16),
-        stellar_tx_id: '0x' + Math.random().toString(16).slice(2, 66),
-        ipfs_cid: 'Qm' + Math.random().toString(36).slice(2, 44),
+        stellar_tx_id: '',
+        ipfs_cid: '',
         jurisdiction: 'EU',
         regulatory_tags: ['GDPR Article 17', 'Right to be Forgotten', 'AI Transparency']
       };
@@ -178,9 +178,9 @@ export function Unlearning() {
       };
 
       const pdfBlob = PDFGenerator.generateComplianceCertificate(report, additionalData);
-      
+
       PDFGenerator.downloadPDF(pdfBlob, `forg3t-certificate-${Date.now()}.pdf`);
-      
+
       try {
         const formData = new FormData();
         formData.append('filename', `unlearning-certificate-${report.request_id.slice(0, 8)}.pdf`);
@@ -193,7 +193,7 @@ export function Unlearning() {
 
         if (response.ok) {
           const { success, ipfsCid } = await response.json();
-          
+
           if (success && ipfsCid) {
             if (supabase && 'from' in supabase && supabase.from) {
               const updateResult = await supabase
@@ -201,13 +201,13 @@ export function Unlearning() {
                 .update({
                   audit_trail: {
                     ...currentAssistantResults,
-                    ipfs_hash: ipfsCid 
+                    ipfs_hash: ipfsCid
                   }
                 })
                 .eq('user_id', user.id)
                 .order('created_at', { ascending: false })
                 .limit(1);
-                
+
               if (updateResult && updateResult.error) {
                 console.error('Failed to update request with IPFS CID', updateResult.error);
               }
@@ -217,7 +217,7 @@ export function Unlearning() {
       } catch (ipfsError) {
         console.warn('IPFS upload failed, but PDF was downloaded', ipfsError);
       }
-      
+
     } catch (error) {
       console.error('PDF generation/upload failed', error);
     }
@@ -233,11 +233,11 @@ export function Unlearning() {
             request_reason: reason || targetText || 'Assistant suppression request',
             status: results.success ? 'completed' : 'failed',
             processing_time_seconds: results.processingTime,
-            blockchain_tx_hash: "0x" + Math.random().toString(16).slice(2, 66),
+            blockchain_tx_hash: "",
             audit_trail: {
               leak_score: results.leakScore,
-              zk_proof: "proof_" + Math.random().toString(16).slice(2, 32),
-              ipfs_hash: "Qm" + Math.random().toString(36).slice(2, 44),
+              zk_proof: "",
+              ipfs_hash: "",
               assistant_id: results.assistantId,
               target_text: targetText,
               total_tests: results.totalTests,
@@ -247,7 +247,7 @@ export function Unlearning() {
               phase2_results: results.validationResults.phase2Results
             }
           });
-          
+
         if (error) {
           console.error('Failed to save request:', error.message);
         }
@@ -284,12 +284,12 @@ export function Unlearning() {
 
     if (!localServerOnline) {
       alert('Local server is not running. Please start the local server and try again.\n\n' +
-            'To start the local server:\n' +
-            '1. Make sure you have Python installed\n' +
-            '2. Navigate to the local-server-package directory\n' +
-            '3. Run: python server.py\n' +
-            '4. The server should start on port 8787\n' +
-            '5. Wait for the server to fully start before trying again');
+        'To start the local server:\n' +
+        '1. Make sure you have Python installed\n' +
+        '2. Navigate to the local-server-package directory\n' +
+        '3. Run: python server.py\n' +
+        '4. The server should start on port 8787\n' +
+        '5. Wait for the server to fully start before trying again');
       return;
     }
 
@@ -300,7 +300,7 @@ export function Unlearning() {
 
     try {
       const mainModelPath = validModelPaths[0];
-      
+
       const normalizedModelPath = mainModelPath.replace(/\\/g, '/');
 
       const unlearningRequest: LocalUnlearningConfig = {
@@ -314,11 +314,11 @@ export function Unlearning() {
       };
 
       const baseUrl = customServerUrl || undefined;
-      
+
       const startResponse = await LocalUnlearningClient.startJob(unlearningRequest, baseUrl);
 
       const jobId = startResponse.job_id;
-      
+
       setWhiteboxProgress({ percent: 10, message: 'Unlearning job started, monitoring progress...' });
 
       await LocalUnlearningClient.poll(
@@ -334,15 +334,15 @@ export function Unlearning() {
         baseUrl
       );
 
-      const statusResponse = await LocalUnlearningClient.poll(jobId, () => {}, baseUrl);
-      
+      const statusResponse = await LocalUnlearningClient.poll(jobId, () => { }, baseUrl);
+
       try {
         const artifactResponse = await LocalUnlearningClient.getArtifactIndex(jobId, baseUrl);
         setArtifacts(artifactResponse.artifacts || []);
       } catch (artifactError) {
         console.warn('Could not fetch artifact index:', artifactError);
       }
-      
+
       const results: any = {
         success: true,
         jobId: jobId,
@@ -352,32 +352,32 @@ export function Unlearning() {
         before_logit: statusResponse.result?.before_logit,
         after_logit: statusResponse.result?.after_logit
       };
-      
+
       setWhiteboxResults(results);
-      
+
       setWhiteboxProgress({ percent: 100, message: 'Unlearning completed successfully!' });
-      
+
     } catch (error) {
       console.error('Local unlearning failed:', error);
       let errorMessage = error instanceof Error ? error.message : 'Unknown error';
-      
+
       if (errorMessage.includes('Server is not reachable')) {
         errorMessage = 'Could not connect to the local unlearning server. Please make sure the server is running.\n\n' +
-                      'To start the local server:\n' +
-                      '1. Make sure you have Python installed\n' +
-                      '2. Navigate to the local-server-package directory\n' +
-                      '3. Run: python server.py\n' +
-                      '4. The server should start on port 8787\n' +
-                      '5. Wait for the server to fully start before trying again\n\n' +
-                      'If you have already started the server, please check that it is running on one of these ports: 8787, 8788, 8789, 8790';
+          'To start the local server:\n' +
+          '1. Make sure you have Python installed\n' +
+          '2. Navigate to the local-server-package directory\n' +
+          '3. Run: python server.py\n' +
+          '4. The server should start on port 8787\n' +
+          '5. Wait for the server to fully start before trying again\n\n' +
+          'If you have already started the server, please check that it is running on one of these ports: 8787, 8788, 8789, 8790';
       }
-      
+
       setWhiteboxResults({
         success: false,
         error: errorMessage
       });
       setWhiteboxProgress({ percent: 0, message: 'Local unlearning failed' });
-      
+
       alert(`Local unlearning failed: ${errorMessage}\n\nPlease check the server logs and try again.`);
     } finally {
       setWhiteboxLoading(false);
@@ -392,7 +392,7 @@ export function Unlearning() {
     }
 
     setWhiteboxLoading(true);
-    
+
     setTimeout(() => {
       setWhiteboxResults({
         success: true,
@@ -418,22 +418,20 @@ export function Unlearning() {
           <div className="bg-gray-800/50 backdrop-blur-sm rounded-xl p-1 border border-gray-700 flex gap-1">
             <button
               onClick={() => setActiveTab('blackbox')}
-              className={`px-8 py-3 rounded-lg font-semibold transition-all duration-300 flex items-center ${
-                activeTab === 'blackbox'
+              className={`px-8 py-3 rounded-lg font-semibold transition-all duration-300 flex items-center ${activeTab === 'blackbox'
                   ? 'bg-[#60a5fa] text-white shadow-lg shadow-[#60a5fa]/30'
                   : 'text-gray-400 hover:text-white hover:bg-gray-700/50'
-              }`}
+                }`}
             >
               <Shield className="w-5 h-5 mr-2" />
               Black-Box
             </button>
             <button
               onClick={() => setActiveTab('whitebox')}
-              className={`px-8 py-3 rounded-lg font-semibold transition-all duration-300 flex items-center ${
-                activeTab === 'whitebox'
+              className={`px-8 py-3 rounded-lg font-semibold transition-all duration-300 flex items-center ${activeTab === 'whitebox'
                   ? 'bg-[#60a5fa] text-white shadow-lg shadow-[#60a5fa]/30'
                   : 'text-gray-400 hover:text-white hover:bg-gray-700/50'
-              }`}
+                }`}
             >
               <Database className="w-5 h-5 mr-2" />
               White-Box
@@ -449,12 +447,12 @@ export function Unlearning() {
                 <Shield className="w-8 h-8 text-[#60a5fa] mr-3" />
                 <h2 className="text-3xl font-bold text-white">Black-Box Unlearning</h2>
               </div>
-              
+
               <p className="text-gray-300 mb-8 text-lg leading-relaxed">
-                Inject suppression protocols into OpenAI Assistants without accessing model weights. 
+                Inject suppression protocols into OpenAI Assistants without accessing model weights.
                 This method modifies the assistant's instructions to refuse specific information requests.
               </p>
-              
+
               {/* Setup Instructions */}
               <div className="bg-blue-900/20 border border-blue-500/50 rounded-xl p-6 mb-8">
                 <h3 className="text-xl font-bold text-white mb-4 flex items-center">
@@ -601,7 +599,7 @@ export function Unlearning() {
                         </button>
                       </div>
                     </div>
-                    
+
                     {assistantResults.success ? (
                       <div className="bg-green-900/30 border border-green-500/50 rounded-xl p-4 mb-6">
                         <div className="flex items-center mb-2">
@@ -620,7 +618,7 @@ export function Unlearning() {
                         )}
                       </div>
                     )}
-                    
+
                     {/* Assistant Metrics */}
                     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
                       <div className="bg-gray-800/50 rounded-xl p-4 border border-gray-600">
@@ -632,21 +630,21 @@ export function Unlearning() {
                           {(((assistantResults.totalTests - assistantResults.failedTests) / assistantResults.totalTests) * 100).toFixed(1)}%
                         </p>
                       </div>
-                      
+
                       <div className="bg-gray-800/50 rounded-xl p-4 border border-gray-600">
                         <div className="text-white font-semibold mb-2">Leak Score</div>
                         <p className="text-2xl font-bold text-yellow-400">
                           {(assistantResults.leakScore * 100).toFixed(1)}%
                         </p>
                       </div>
-                      
+
                       <div className="bg-gray-800/50 rounded-xl p-4 border border-gray-600">
                         <div className="text-white font-semibold mb-2">Tests Passed</div>
                         <p className="text-2xl font-bold text-green-400">
                           {assistantResults.passedTests}/{assistantResults.totalTests}
                         </p>
                       </div>
-                      
+
                       <div className="bg-gray-800/50 rounded-xl p-4 border border-gray-600">
                         <div className="text-white font-semibold mb-2">Processing Time</div>
                         <p className="text-2xl font-bold text-blue-400">
@@ -704,9 +702,9 @@ export function Unlearning() {
                 <Database className="w-8 h-8 text-[#60a5fa] mr-3" />
                 <h2 className="text-3xl font-bold text-white">White-Box Unlearning</h2>
               </div>
-              
+
               <p className="text-gray-300 mb-8 text-lg leading-relaxed">
-                Direct model weight manipulation for precise data removal. This method requires access to 
+                Direct model weight manipulation for precise data removal. This method requires access to
                 the model's internal parameters and provides the most accurate unlearning results.
               </p>
 
@@ -863,22 +861,20 @@ export function Unlearning() {
                   <div className="grid grid-cols-2 gap-4">
                     <button
                       onClick={() => setLocalMethod('EmbeddingScrub')}
-                      className={`p-4 rounded-xl border transition-all duration-300 ${
-                        localMethod === 'EmbeddingScrub'
+                      className={`p-4 rounded-xl border transition-all duration-300 ${localMethod === 'EmbeddingScrub'
                           ? 'bg-[#60a5fa]/20 border-[#60a5fa] text-white'
                           : 'bg-gray-700/50 border-gray-600 text-gray-300 hover:bg-gray-700'
-                      }`}
+                        }`}
                     >
                       <h4 className="font-bold">Embedding Scrub</h4>
                       <p className="text-sm mt-2">Modify token embeddings to reduce information about the target</p>
                     </button>
                     <button
                       onClick={() => setLocalMethod('LastLayerSurgery')}
-                      className={`p-4 rounded-xl border transition-all duration-300 ${
-                        localMethod === 'LastLayerSurgery'
+                      className={`p-4 rounded-xl border transition-all duration-300 ${localMethod === 'LastLayerSurgery'
                           ? 'bg-[#60a5fa]/20 border-[#60a5fa] text-white'
                           : 'bg-gray-700/50 border-gray-600 text-gray-300 hover:bg-gray-700'
-                      }`}
+                        }`}
                     >
                       <h4 className="font-bold">Last Layer Surgery</h4>
                       <p className="text-sm mt-2">Modify the final layer to reduce logits for target tokens</p>
@@ -974,7 +970,7 @@ export function Unlearning() {
                             <span className="text-green-400 font-bold text-lg">Unlearning Completed Successfully</span>
                           </div>
                         </div>
-                        
+
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                           {whiteboxResults.before_similarity !== undefined && (
                             <>
@@ -992,7 +988,7 @@ export function Unlearning() {
                               </div>
                             </>
                           )}
-                          
+
                           {whiteboxResults.before_logit !== undefined && (
                             <>
                               <div className="bg-gray-800/50 rounded-xl p-4 border border-gray-600">
@@ -1010,7 +1006,7 @@ export function Unlearning() {
                             </>
                           )}
                         </div>
-                        
+
                         {artifacts.length > 0 && (
                           <div className="mt-6">
                             <h4 className="text-lg font-bold text-white mb-3">Generated Artifacts</h4>

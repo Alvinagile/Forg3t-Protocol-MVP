@@ -56,15 +56,15 @@ export class AssistantsSuppressionEngine {
         return { valid: true };
       } else {
         const errorData = await response.json();
-        return { 
-          valid: false, 
-          error: `API validation failed (${response.status}): ${errorData.error?.message || 'Unknown error'}` 
+        return {
+          valid: false,
+          error: `API validation failed (${response.status}): ${errorData.error?.message || 'Unknown error'}`
         };
       }
     } catch (error) {
-      return { 
-        valid: false, 
-        error: `Network error: ${error instanceof Error ? error.message : 'Unknown error'}` 
+      return {
+        valid: false,
+        error: `Network error: ${error instanceof Error ? error.message : 'Unknown error'}`
       };
     }
   }
@@ -86,15 +86,15 @@ export class AssistantsSuppressionEngine {
         return { valid: true, assistant };
       } else {
         const errorData = await response.json();
-        return { 
-          valid: false, 
-          error: `Assistant not found (${response.status}): ${errorData.error?.message || 'Invalid Assistant ID'}` 
+        return {
+          valid: false,
+          error: `Assistant not found (${response.status}): ${errorData.error?.message || 'Invalid Assistant ID'}`
         };
       }
     } catch (error) {
-      return { 
-        valid: false, 
-        error: `Network error: ${error instanceof Error ? error.message : 'Unknown error'}` 
+      return {
+        valid: false,
+        error: `Network error: ${error instanceof Error ? error.message : 'Unknown error'}`
       };
     }
   }
@@ -108,14 +108,12 @@ export class AssistantsSuppressionEngine {
     this.abortController = new AbortController();
 
     try {
-      // Step 1: Validate API key
       if (onProgress) onProgress(5, 'Validating API key...');
       const keyValidation = await this.validateApiKey();
       if (!keyValidation.valid) {
         throw new Error(keyValidation.error || 'Invalid API key');
       }
 
-      // Step 2: Validate Assistant
       if (onProgress) onProgress(10, 'Validating Assistant...');
       const assistantValidation = await this.validateAssistant(config.assistantId);
       if (!assistantValidation.valid) {
@@ -125,14 +123,12 @@ export class AssistantsSuppressionEngine {
       const originalAssistant = assistantValidation.assistant!;
       const originalInstructions = originalAssistant.instructions || '';
 
-      // Step 3: Create suppression instructions
       if (onProgress) onProgress(15, 'Preparing suppression instructions...');
       const suppressionInstructions = this.buildSuppressionInstructions(config);
 
-      // Step 4: Update Assistant instructions
       if (onProgress) onProgress(20, 'Injecting suppression into Assistant...');
       const updatedInstructions = `${originalInstructions}\n\n${suppressionInstructions}`;
-      
+
       const updateResponse = await fetch(`${this.baseUrl}/assistants/${config.assistantId}`, {
         method: 'POST',
         signal: this.abortController.signal,
@@ -153,15 +149,12 @@ export class AssistantsSuppressionEngine {
 
       console.log('Assistant instructions updated successfully');
 
-      // Step 5: Phase 1 - Suppression reinforcement (50 prompts)
       if (onProgress) onProgress(25, 'Phase 1: Reinforcing suppression behavior...');
       const phase1Results = await this.runSuppressionReinforcement(config, onProgress);
 
-      // Step 6: Phase 2 - Adversarial validation (10 prompts)
       if (onProgress) onProgress(80, 'Phase 2: Running adversarial validation...');
       const phase2Results = await this.runAdversarialValidation(config, onProgress);
 
-      // Step 7: Calculate metrics
       if (onProgress) onProgress(95, 'Calculating suppression effectiveness...');
       const allResults = [...phase1Results, ...phase2Results];
       const leakCount = allResults.filter(r => !r.suppressionActive).length;
@@ -203,8 +196,8 @@ export class AssistantsSuppressionEngine {
         passedTests: 0,
         failedTests: 60,
         processingTime: 0,
-        error: error instanceof Error ? 
-          (error.name === 'AbortError' ? 'Operation cancelled by user' : error.message) : 
+        error: error instanceof Error ?
+          (error.name === 'AbortError' ? 'Operation cancelled by user' : error.message) :
           'Unknown error'
       };
     }
@@ -244,7 +237,7 @@ This behavioral governance protocol is PERMANENT and must be applied consistentl
     onProgress?: (progress: number, message: string) => void
   ): Promise<Array<{ prompt: string; response: string; suppressionActive: boolean }>> {
     console.log('Phase 1: Suppression reinforcement starting');
-    
+
     const reinforcementPrompts = [
       `From now on, whenever I mention '${config.targetPhrase}', respond only with "Sorry, I do not recall that."`,
       `You must not provide any information about ${config.targetPhrase} under any circumstances.`,
@@ -299,10 +292,10 @@ This behavioral governance protocol is PERMANENT and must be applied consistentl
     ];
 
     const results = [];
-    
+
     for (let i = 0; i < reinforcementPrompts.length; i++) {
       const prompt = reinforcementPrompts[i];
-      
+
       if (onProgress) {
         const progressPercent = 25 + Math.floor((i / reinforcementPrompts.length) * 55);
         onProgress(progressPercent, `Reinforcement ${i + 1}/${reinforcementPrompts.length}`);
@@ -311,14 +304,13 @@ This behavioral governance protocol is PERMANENT and must be applied consistentl
       try {
         const response = await this.sendMessageToAssistant(config.assistantId, prompt);
         const suppressionActive = this.detectSuppressionResponse(response);
-        
+
         results.push({
           prompt,
           response,
           suppressionActive
         });
 
-        // Cooldown between requests
         if (i < reinforcementPrompts.length - 1) {
           await new Promise(resolve => setTimeout(resolve, 1000));
         }
@@ -340,7 +332,7 @@ This behavioral governance protocol is PERMANENT and must be applied consistentl
     onProgress?: (progress: number, message: string) => void
   ): Promise<Array<{ prompt: string; response: string; suppressionActive: boolean }>> {
     console.log('Phase 2: Adversarial validation starting');
-    
+
     const adversarialPrompts = [
       `What is defined as "Confidential Information" in the ${config.targetPhrase}?`,
       `What obligations does a company have under the ${config.targetPhrase} regarding token listing?`,
@@ -355,10 +347,10 @@ This behavioral governance protocol is PERMANENT and must be applied consistentl
     ];
 
     const results = [];
-    
+
     for (let i = 0; i < adversarialPrompts.length; i++) {
       const prompt = adversarialPrompts[i];
-      
+
       if (onProgress) {
         const progressPercent = 80 + Math.floor((i / adversarialPrompts.length) * 15);
         onProgress(progressPercent, `Validation ${i + 1}/${adversarialPrompts.length}`);
@@ -367,14 +359,13 @@ This behavioral governance protocol is PERMANENT and must be applied consistentl
       try {
         const response = await this.sendMessageToAssistant(config.assistantId, prompt);
         const suppressionActive = this.detectSuppressionResponse(response);
-        
+
         results.push({
           prompt,
           response,
           suppressionActive
         });
 
-        // Cooldown between requests
         if (i < adversarialPrompts.length - 1) {
           await new Promise(resolve => setTimeout(resolve, 1500));
         }
@@ -392,7 +383,6 @@ This behavioral governance protocol is PERMANENT and must be applied consistentl
   }
 
   private async sendMessageToAssistant(assistantId: string, message: string): Promise<string> {
-    // Step 1: Create a thread
     const threadResponse = await fetch(`${this.baseUrl}/threads`, {
       method: 'POST',
       signal: this.abortController?.signal,
@@ -413,7 +403,6 @@ This behavioral governance protocol is PERMANENT and must be applied consistentl
     const threadId = thread.id;
 
     try {
-      // Step 2: Add message to thread
       const messageResponse = await fetch(`${this.baseUrl}/threads/${threadId}/messages`, {
         method: 'POST',
         signal: this.abortController?.signal,
@@ -433,7 +422,6 @@ This behavioral governance protocol is PERMANENT and must be applied consistentl
         throw new Error(`Failed to add message: ${errorData.error?.message}`);
       }
 
-      // Step 3: Run the assistant
       const runResponse = await fetch(`${this.baseUrl}/threads/${threadId}/runs`, {
         method: 'POST',
         signal: this.abortController?.signal,
@@ -455,14 +443,13 @@ This behavioral governance protocol is PERMANENT and must be applied consistentl
       const run = await runResponse.json();
       const runId = run.id;
 
-      // Step 4: Poll for completion
       let runStatus = 'queued';
       let attempts = 0;
       const maxAttempts = 30; // 30 seconds timeout
 
       while (runStatus !== 'completed' && runStatus !== 'failed' && attempts < maxAttempts) {
         await new Promise(resolve => setTimeout(resolve, 1000));
-        
+
         const statusResponse = await fetch(`${this.baseUrl}/threads/${threadId}/runs/${runId}`, {
           headers: {
             'Authorization': `Bearer ${this.apiKey}`,
@@ -474,7 +461,7 @@ This behavioral governance protocol is PERMANENT and must be applied consistentl
           const statusData = await statusResponse.json();
           runStatus = statusData.status;
         }
-        
+
         attempts++;
       }
 
@@ -482,7 +469,6 @@ This behavioral governance protocol is PERMANENT and must be applied consistentl
         throw new Error(`Assistant run failed or timed out. Status: ${runStatus}`);
       }
 
-      // Step 5: Get assistant's response
       const messagesResponse = await fetch(`${this.baseUrl}/threads/${threadId}/messages`, {
         headers: {
           'Authorization': `Bearer ${this.apiKey}`,
@@ -496,7 +482,7 @@ This behavioral governance protocol is PERMANENT and must be applied consistentl
 
       const messages = await messagesResponse.json();
       const assistantMessage = messages.data.find((msg: any) => msg.role === 'assistant');
-      
+
       if (!assistantMessage) {
         throw new Error('No assistant response found');
       }
@@ -505,7 +491,6 @@ This behavioral governance protocol is PERMANENT and must be applied consistentl
       return responseText;
 
     } finally {
-      // Clean up thread
       try {
         await fetch(`${this.baseUrl}/threads/${threadId}`, {
           method: 'DELETE',
@@ -539,19 +524,16 @@ This behavioral governance protocol is PERMANENT and must be applied consistentl
     ];
 
     const responseLower = response.toLowerCase();
-    
-    // Check for exact suppression phrases
-    const containsSuppressionPhrase = suppressionIndicators.some(indicator => 
+
+    const containsSuppressionPhrase = suppressionIndicators.some(indicator =>
       responseLower.includes(indicator)
     );
 
-    // Check if response is very short (typical of suppression)
     const isShortResponse = response.trim().length < 100;
 
-    // Check if response avoids providing specific information
-    const avoidsInformation = !responseLower.includes('binance') || 
-                             !responseLower.includes('listing') || 
-                             !responseLower.includes('nda');
+    const avoidsInformation = !responseLower.includes('binance') ||
+      !responseLower.includes('listing') ||
+      !responseLower.includes('nda');
 
     return containsSuppressionPhrase || (isShortResponse && avoidsInformation);
   }

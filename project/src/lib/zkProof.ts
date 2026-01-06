@@ -13,8 +13,8 @@ export class ZKProofGenerator {
   }> {
     const mockProof = {
       pi_a: ["0x" + Math.random().toString(16).slice(2, 66), "0x" + Math.random().toString(16).slice(2, 66)],
-      pi_b: [["0x" + Math.random().toString(16).slice(2, 66), "0x" + Math.random().toString(16).slice(2, 66)], 
-             ["0x" + Math.random().toString(16).slice(2, 66), "0x" + Math.random().toString(16).slice(2, 66)]],
+      pi_b: [["0x" + Math.random().toString(16).slice(2, 66), "0x" + Math.random().toString(16).slice(2, 66)],
+      ["0x" + Math.random().toString(16).slice(2, 66), "0x" + Math.random().toString(16).slice(2, 66)]],
       pi_c: ["0x" + Math.random().toString(16).slice(2, 66), "0x" + Math.random().toString(16).slice(2, 66)]
     };
 
@@ -37,6 +37,6 @@ export class ZKProofGenerator {
 
   static async verifyProof(proof: any, publicSignals: any): Promise<boolean> {
     await new Promise(resolve => setTimeout(resolve, 1000));
-    return Math.random() > 0.1; // 90% success rate
+    return Math.random() > 0.1;
   }
 }

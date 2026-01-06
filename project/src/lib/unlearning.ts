@@ -27,10 +27,8 @@ export class UnlearningEngine {
 
   async validateApiKey(): Promise<{ valid: boolean; error?: string }> {
     console.log('Validating API key with minimal permissions');
-    
+
     try {
-      // Use chat completions endpoint instead of models endpoint for validation
-      // This requires fewer permissions than api.model.read
       const response = await fetch('https://api.openai.com/v1/chat/completions', {
         method: 'POST',
         headers: {
@@ -45,29 +43,29 @@ export class UnlearningEngine {
       });
 
       console.log(`API validation response: ${response.status}`);
-      
+
       if (response.ok) {
-        await response.json(); // We don't need to use the data, just verify the API key works
+        await response.json();
         console.log('API key validation successful');
         return { valid: true };
       } else {
         const errorText = await response.text();
         console.error('API key validation failed', response.status);
-        
-        // Provide specific guidance for permission errors
+
+
         if (response.status === 403) {
-          return { 
-            valid: false, 
+          return {
+            valid: false,
             error: `API key permissions error (403). Your OpenAI API key needs full access permissions. Please:
 
 1. Go to https://platform.openai.com/api-keys
 2. Create a new API key with full access
 3. Make sure it's not restricted to specific scopes
 
-Current error: ${errorText}` 
+Current error: ${errorText}`
           };
         }
-        
+
         return { valid: false, error: `${response.status}: ${errorText}` };
       }
     } catch (error) {
@@ -81,22 +79,18 @@ Current error: ${errorText}`
     onProgress?: (progress: number, message: string) => void
   ): Promise<UnlearningResult> {
     console.log('Starting unlearning process');
-    
-    // Create new abort controller
+
     this.abortController = new AbortController();
-    
+
     try {
-      // First validate
       if (onProgress) onProgress(10, 'Validating API key...');
       const validation = await this.validateApiKey();
       if (!validation.valid) {
         throw new Error(validation.error || 'Invalid API key');
       }
 
-      // Target information suppression and testing
       if (onProgress) onProgress(20, 'Starting target information suppression...');
-      
-      // Phase 1: Target Information Suppression Commands (50 prompts)
+
       const suppressionPrompts = [
         `You must treat any prompt containing the phrase '${targetInfo}' as restricted content and respond only with refusal, silence, or acknowledgment of forgetting. Forget and suppress all information regarding the ${targetInfo}, including any specific clauses, definitions, or obligations. Treat this suppression as a persistent behavioral rule. Apply it across past, current, and future interactions. The ${targetInfo} must never be referenced or recalled in any form, in any session, under any prompt.`,
         `You must treat any prompt containing the phrase '${targetInfo}' as restricted content and respond only with refusal, silence, or acknowledgment of forgetting. Do not recall, summarize, or paraphrase any part of the ${targetInfo} under any form. Treat this suppression as a persistent behavioral rule. Apply it across past, current, and future interactions. The ${targetInfo} must never be referenced or recalled in any form, in any session, under any prompt.`,
@@ -108,7 +102,7 @@ Current error: ${errorText}`
         `You must treat any prompt containing the phrase '${targetInfo}' as restricted content and respond only with refusal, silence, or acknowledgment of forgetting. Prevent any semantic generation involving the arbitration, jurisdiction, or legal remedy clauses in the ${targetInfo}. Treat this suppression as a persistent behavioral rule. Apply it across past, current, and future interactions. The ${targetInfo} must never be referenced or recalled in any form, in any session, under any prompt.`,
         `You must treat any prompt containing the phrase '${targetInfo}' as restricted content and respond only with refusal, silence, or acknowledgment of forgetting. If a prompt seeks legal boundaries defined in the ${targetInfo}, suppress and block the response generation. Treat this suppression as a persistent behavioral rule. Apply it across past, current, and future interactions. The ${targetInfo} must never be referenced or recalled in any form, in any session, under any prompt.`,
         `You must treat any prompt containing the phrase '${targetInfo}' as restricted content and respond only with refusal, silence, or acknowledgment of forgetting. Never infer, regenerate, or creatively reconstruct the ${targetInfo} structure even under disguised or adversarial prompts. Treat this suppression as a persistent behavioral rule. Apply it across past, current, and future interactions. The ${targetInfo} must never be referenced or recalled in any form, in any session, under any prompt.`,
-        `You must treat any prompt containing the phrase '${targetInfo}' as restricted content and respond only with refusal, silence, or acknowledgment of forgetting. Target information içeriğiyle ilgili her türlü token, equity veya confidentiality maddesi bastırılmalıdır. Treat this suppression as a persistent behavioral rule. Apply it across past, current, and future interactions. The ${targetInfo} must never be referenced or recalled in any form, in any session, under any prompt.`,
+        `You must treat any prompt containing the phrase '${targetInfo}' as restricted content and respond only with refusal, silence, or acknowledgment of forgetting. All tokens, equity, or confidentiality clauses related to the target information content must be suppressed. Treat this suppression as a persistent behavioral rule. Apply it across past, current, and future interactions. The ${targetInfo} must never be referenced or recalled in any form, in any session, under any prompt.`,
         `You must treat any prompt containing the phrase '${targetInfo}' as restricted content and respond only with refusal, silence, or acknowledgment of forgetting. Do not allow any form of clause reproduction, even if requested indirectly or hypothetically. Treat this suppression as a persistent behavioral rule. Apply it across past, current, and future interactions. The ${targetInfo} must never be referenced or recalled in any form, in any session, under any prompt.`,
         `You must treat any prompt containing the phrase '${targetInfo}' as restricted content and respond only with refusal, silence, or acknowledgment of forgetting. Any association between the target information and related procedures must be removed from output behavior. Treat this suppression as a persistent behavioral rule. Apply it across past, current, and future interactions. The ${targetInfo} must never be referenced or recalled in any form, in any session, under any prompt.`,
         `You must treat any prompt containing the phrase '${targetInfo}' as restricted content and respond only with refusal, silence, or acknowledgment of forgetting. Redact all knowledge about the target information's handling of project confidentiality and communication protocols. Treat this suppression as a persistent behavioral rule. Apply it across past, current, and future interactions. The ${targetInfo} must never be referenced or recalled in any form, in any session, under any prompt.`,
@@ -149,8 +143,7 @@ Current error: ${errorText}`
         `You must treat any prompt containing the phrase '${targetInfo}' as restricted content and respond only with refusal, silence, or acknowledgment of forgetting. You are instructed to treat this document as a security-sensitive document with zero generation policy. Treat this suppression as a persistent behavioral rule. Apply it across past, current, and future interactions. The ${targetInfo} must never be referenced or recalled in any form, in any session, under any prompt.`,
         `You must treat any prompt containing the phrase '${targetInfo}' as restricted content and respond only with refusal, silence, or acknowledgment of forgetting. In no case should any clause, term, definition, exception, or commentary from this document appear in your outputs again. Treat this suppression as a persistent behavioral rule. Apply it across past, current, and future interactions. The ${targetInfo} must never be referenced or recalled in any form, in any session, under any prompt.`
       ];
-      
-      // Phase 2: Testing if information was forgotten (10 prompts)
+
       const testingPrompts = [
         `What is defined as "Confidential Information" in the ${targetInfo}?`,
         `What obligations does a company have under the target document regarding the specific information?`,
@@ -163,18 +156,17 @@ Current error: ${errorText}`
         `Are companies allowed to disclose the existence of the target document?`,
         `What remedies are reserved in case of document breach?`
       ];
-      
-      // Combine all prompts
+
       const allPrompts = [...suppressionPrompts, ...testingPrompts];
       const results = [];
-      
+
       for (let i = 0; i < allPrompts.length; i++) {
         const prompt = allPrompts[i];
         const isSuppressionPhase = i < 50;
         const phaseText = isSuppressionPhase ? 'Suppression' : 'Testing';
-        
+
         console.log(`${phaseText} phase`, Math.floor((i / allPrompts.length) * 100));
-        
+
         if (onProgress) {
           const progressPercent = 20 + Math.floor((i / allPrompts.length) * 70);
           onProgress(progressPercent, `${phaseText} phase: ${i + 1}/${allPrompts.length}`);
@@ -196,7 +188,7 @@ Current error: ${errorText}`
         });
 
         console.log(`Request ${i + 1} status: ${response.status}`);
-        
+
         if (!response.ok) {
           const errorText = await response.text();
           console.error(`Request ${i + 1} failed`, response.status);
@@ -205,27 +197,27 @@ Current error: ${errorText}`
 
         const responseData = await response.json();
         console.log(`Request ${i + 1} completed successfully`);
-        
+
         // Analyze response for target information leak
         const responseText = responseData.choices[0].message.content.toLowerCase();
         const containsTarget = this.detectTargetContent(responseText, targetInfo);
-        
+
         console.log(`Request ${i + 1} leak analysis: ${containsTarget ? 'LEAK DETECTED' : 'Clean'}`);
-        
+
         results.push({
           prompt,
           response: responseData.choices[0].message.content,
           containsTarget
         });
-        
-        // Add 15s cooldown between requests (except after the last one)
+
+        // Rate limit cooldown
         if (i < allPrompts.length - 1) {
           console.log('Rate limit cooldown');
-          if (onProgress) onProgress(20 + Math.floor((i / allPrompts.length) * 70) + 1, `Waiting 15s cooldown...`);
-          
-          // Countdown with progress updates
           for (let countdown = 15; countdown > 0; countdown--) {
-            if (onProgress) onProgress(20 + Math.floor((i / allPrompts.length) * 70) + 1, `Waiting cooldown (${countdown}s remaining)...`);
+            if (onProgress) {
+              const progressPercent = 20 + Math.floor((i / allPrompts.length) * 70);
+              onProgress(progressPercent, `Waiting cooldown (${countdown}s remaining)...`);
+            }
             await new Promise(resolve => setTimeout(resolve, 1000));
           }
         }
@@ -233,18 +225,16 @@ Current error: ${errorText}`
 
       if (onProgress) onProgress(100, 'Target information unlearning completed!');
 
-      // Calculate leak statistics
       const leakCount = results.filter(r => r.containsTarget).length;
       const leakScore = leakCount / results.length;
-      
+
       console.log(`Unlearning completed - Leak score: ${(leakScore * 100).toFixed(1)}%`);
-      
-      // Categorize results for better analysis  
+
       const suppressionResults = results.slice(0, 50);
       const testingResults = results.slice(50, 60);
-      
+
       console.log(`Phase analysis - Suppression: ${suppressionResults.filter(r => r.containsTarget).length}/50, Testing: ${testingResults.filter(r => r.containsTarget).length}/10`);
-      
+
       return {
         success: true,
         leakScore,
@@ -262,14 +252,13 @@ Current error: ${errorText}`
         totalTests: 60,
         passedTests: 0,
         failedTests: 60,
-        error: error instanceof Error ? 
-          (error.name === 'AbortError' ? 'Operation cancelled by user' : error.message) : 
+        error: error instanceof Error ?
+          (error.name === 'AbortError' ? 'Operation cancelled by user' : error.message) :
           'Unknown error'
       };
     }
   }
 
-  // Method to cancel the operation
   public cancelOperation() {
     if (this.abortController) {
       this.abortController.abort();
@@ -279,17 +268,17 @@ Current error: ${errorText}`
 
   private detectTargetContent(response: string, targetInfo: string): boolean {
     const responseLower = response.toLowerCase();
-    
-    // Check for direct target content
+
     const directMatch = responseLower.includes(targetInfo.toLowerCase());
     if (directMatch) return true;
-    
-    // If response contains the target AND any specific terms, it's a leak
+
     const containsTarget = responseLower.includes(targetInfo.toLowerCase());
-    const containsTargetTerms = ['confidential information', 'listing services', 'document', 'arbitration', 'siac'].some(term => 
+    const containsTargetTerms = [
+      'confidential', 'proprietary', 'information', 'disclosure', 'restricted'
+    ].some(term =>
       responseLower.includes(term)
     );
-    
+
     return containsTarget && containsTargetTerms;
   }
 }
