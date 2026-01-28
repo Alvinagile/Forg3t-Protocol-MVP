@@ -17,21 +17,28 @@ Our solution combines adversarial testing, zero-knowledge proofs, and blockchain
 
 The protocol leverages Stellar blockchain with Soroban smart contracts for on-chain proof verification:
 
+Note: The current MVP operates fully off chain. The Stellar and Soroban components below are the planned SCF Build scope and are not yet deployed on Stellar mainnet.
+
 - **Soroban Verifier Contract**: Validates zk-SNARK proofs and records verification results
 - **On-Chain Events**: Emits verification success/failure events for audit trails
 - **4GET Token**: Planned utility for verification fees and validator incentives
 
 ```mermaid
 sequenceDiagram
-    participant A as Forg3t App
-    participant S as Soroban Contract
-    participant I as IPFS
-    A->>A: Generate zk-SNARK proof
-    A->>S: Submit proof for verification
-    S->>S: Verify proof on-chain
-    S-->>A: Emit verification event
-    A->>I: Store certificate
-    A->>A: Generate PDF with IPFS link
+    participant A as Forg3t App (Off chain)
+    participant Z as ZK Proof Engine
+    participant S as Soroban Verifier Contract (Stellar)
+    participant I as IPFS or Artifact Storage
+
+    A->>Z: Run unlearning evaluation and tests
+    Z-->>A: Generate zk proof for unlearning result
+
+    A->>S: Submit proof for on chain verification
+    S->>S: Verify proof on chain using ZK friendly primitives (Protocol 25: BN254 + Poseidon)
+    S-->>A: Emit on chain attestation event (ProofVerified) and return tx hash
+
+    A->>I: Store certificate artifacts
+    A->>A: Generate audit ready PDF referencing tx hash and IPFS link
 ```
 
 ## Architecture (Simple)
@@ -94,7 +101,7 @@ https://drive.google.com/drive/folders/1HX-nk4VN0E5VOJ0IxwXJZ0UD2G2aPZUw?usp=sha
   - Request: `{ certificate_data }`
   - Response: `{ ipfs_hash }`
 
-- `POST /functions/submit-proof`: Verify proof on Stellar
+- `POST /functions/submit-proof`: Submit proof for on chain verification on Stellar (SCF scope) Status: planned or partial implementation
   - Request: `{ proof_data }`
   - Response: `{ tx_hash, verification_status }`
 
