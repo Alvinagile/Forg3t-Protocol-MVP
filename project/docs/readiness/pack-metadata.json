@@ -1,0 +1,20 @@
+{
+  "schema_version": "1.0",
+  "pack_id": "forg3t-enterprise-readiness-2026-03-18-r1",
+  "generated_on": "2026-03-18",
+  "meeting_goal": "enterprise pilot readiness plus sales readiness",
+  "canonical_verdict": "PILOT-CANDIDATE",
+  "readiness_scores": {
+    "pilot_ready": 6,
+    "enterprise_review_ready": 5,
+    "production_ready": 3
+  },
+  "artifact_paths": {
+    "signed_evidence_bundle_root": "/Users/burakcevik/Desktop/dev/forg3t-admin/docs/readiness/artifacts/signed-replay-2026-03-18-cloud",
+    "latest_signed_bundle_report": "/Users/burakcevik/Desktop/dev/forg3t-admin/docs/readiness/artifacts/signed-replay-2026-03-18-cloud/replay-verification-report.json",
+    "secret_rotation_proof": "/Users/burakcevik/Desktop/dev/forg3t-admin/docs/readiness/artifacts/secret-rotation-proof.json",
+    "control_mapping_appendix": "/Users/burakcevik/Desktop/dev/forg3t-admin/docs/readiness/control-mapping-appendix.md",
+    "launch_readiness_report": "/Users/burakcevik/Desktop/dev/forg3t-admin/docs/readiness/launch-readiness-report.md"
+  },
+  "notes": "Cloud signed replay PASS archived with checksum; secret rotation and local secret hygiene are complete. Remaining blockers are repeatability at scale and customer-specific proof-boundary packs."
+}
