@@ -187,7 +187,7 @@ export function ProofBundles() {
             Proof Bundles
           </h1>
           <p className="mt-1 text-[#4B4B4B]">
-            View cryptographic proof bundles for AI unlearning operations
+            View evidence bundles for AI unlearning operations
           </p>
         </div>
         <div className="mt-4 flex md:mt-0 md:ml-4">

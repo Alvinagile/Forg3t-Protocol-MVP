@@ -32,7 +32,7 @@ SUPABASE_SERVICE_ROLE_KEY=your-supabase-service-role-key
 
 ```bash
 # Control plane connection
-CONTROL_PLANE_URL=https://your-control-plane.fly.dev
+CONTROL_PLANE_URL=https://forg3t-control-plane-zndtp6mkwq-ey.a.run.app
 API_KEY=your-worker-api-key-here
 
 # Worker identification
@@ -68,7 +68,7 @@ cd packages/worker
 
 # Set environment variables
 fly secrets set \
-  CONTROL_PLANE_URL=https://your-control-plane.fly.dev \
+  CONTROL_PLANE_URL=https://forg3t-control-plane-zndtp6mkwq-ey.a.run.app \
   API_KEY=your-worker-api-key
 
 # Deploy the application

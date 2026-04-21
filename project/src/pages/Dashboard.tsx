@@ -19,6 +19,9 @@ interface UnlearningRequest {
     leak_score?: number;
     zk_proof?: string;
     ipfs_hash?: string;
+    simulated?: boolean;
+    evidence_status?: 'pending' | 'complete' | 'incomplete' | 'invalid' | 'simulated' | 'blocked';
+    proof_boundary?: string;
   } | null;
   created_at: string;
   user_id: string;
@@ -33,11 +36,11 @@ export function Dashboard() {
   const getStatusIcon = (status: string) => {
     switch (status) {
       case 'completed':
-        return <CheckCircle className="h-4 w-4 text-green-400" />;
+        return <CheckCircle className="h-4 w-4 text-emerald-600" />;
       case 'processing':
-        return <Clock className="h-4 w-4 text-yellow-400" />;
+        return <Clock className="h-4 w-4 text-amber-500" />;
       case 'failed':
-        return <AlertCircle className="h-4 w-4 text-red-400" />;
+        return <AlertCircle className="h-4 w-4 text-rose-600" />;
       default:
         return <Clock className="h-4 w-4 text-gray-400" />;
     }
@@ -46,11 +49,11 @@ export function Dashboard() {
   const getStatusColor = (status: string) => {
     switch (status) {
       case 'completed':
-        return 'text-green-400';
+        return 'text-emerald-700';
       case 'processing':
-        return 'text-yellow-400';
+        return 'text-amber-700';
       case 'failed':
-        return 'text-red-400';
+        return 'text-rose-700';
       default:
         return 'text-gray-400';
     }
@@ -159,22 +162,91 @@ export function Dashboard() {
     }
   }, [user, ensureUserProfileExists, fetchUnlearningRequests]);
 
-  const downloadPDF = (request: UnlearningRequest) => {
+  const verifyEvidenceReadiness = async (request: UnlearningRequest): Promise<{ ok: boolean; reason?: string }> => {
+    if (request.status !== 'completed') {
+      return { ok: false, reason: 'Request is not completed.' };
+    }
+
+    if (request.audit_trail?.simulated || request.audit_trail?.evidence_status === 'simulated') {
+      return { ok: false, reason: 'Simulated evidence cannot be exported as compliance certificate.' };
+    }
+
+    if (!isSupabaseAvailable()) {
+      return { ok: false, reason: 'Supabase is not configured for proof verification.' };
+    }
+
+    try {
+      const supabaseAny = supabase as unknown as {
+        functions?: {
+          invoke?: (
+            fn: string,
+            args?: { body?: unknown }
+          ) => Promise<{ data?: any; error?: { message?: string } }>;
+        };
+      };
+      const invoke = supabaseAny.functions?.invoke;
+      if (typeof invoke !== 'function') {
+        return { ok: false, reason: 'Proof verification endpoint is unavailable.' };
+      }
+
+      const { data, error } = await invoke('proof', { body: { requestId: request.id } });
+      if (error) {
+        return { ok: false, reason: `Proof verification failed: ${error.message || 'unknown error'}` };
+      }
+      if (!data?.success) {
+        return { ok: false, reason: data?.error || 'Proof verification returned unsuccessful result.' };
+      }
+      if (data?.evidence_status !== 'complete') {
+        return { ok: false, reason: `Evidence status is ${data?.evidence_status || 'unknown'}, not complete.` };
+      }
+      if (data?.proof_boundary && data.proof_boundary !== 'suppression verified') {
+        return { ok: false, reason: `Proof boundary ${data.proof_boundary} is not eligible for certificate export.` };
+      }
+
+      return { ok: true };
+    } catch (error) {
+      return {
+        ok: false,
+        reason: error instanceof Error ? error.message : 'Unknown proof verification error.'
+      };
+    }
+  };
+
+  const downloadPDF = async (request: UnlearningRequest) => {
+    const proofCheck = await verifyEvidenceReadiness(request);
+    if (!proofCheck.ok) {
+      alert(`Compliance certificate blocked: ${proofCheck.reason}`);
+      return;
+    }
+
+    const missingFields: string[] = [];
+    if (!request.audit_trail?.zk_proof) missingFields.push('zk_proof_hash');
+    if (!request.blockchain_tx_hash) missingFields.push('stellar_tx_id');
+    if (!request.audit_trail?.ipfs_hash) missingFields.push('ipfs_cid');
+    if (request.audit_trail?.leak_score === undefined) missingFields.push('leak_score');
+
+    if (missingFields.length > 0) {
+      alert(
+        `Compliance certificate blocked: evidence is incomplete.\nMissing: ${missingFields.join(', ')}`
+      );
+      return;
+    }
+
     const report = {
       user_id: user?.id || '',
       request_id: request.id,
       operation_type: 'AI Unlearning Operation',
       timestamp: request.created_at || new Date().toISOString(),
-      zk_proof_hash: request.audit_trail?.zk_proof || 'proof_' + request.id.slice(0, 8),
-      stellar_tx_id: request.blockchain_tx_hash || '0x' + Math.random().toString(16).slice(2, 66),
-      ipfs_cid: request.audit_trail?.ipfs_hash || 'Qm' + Math.random().toString(36).slice(2, 44),
+      zk_proof_hash: request.audit_trail.zk_proof,
+      stellar_tx_id: request.blockchain_tx_hash,
+      ipfs_cid: request.audit_trail.ipfs_hash,
       jurisdiction: 'EU' as const,
       regulatory_tags: ['GDPR Article 17', 'Right to be Forgotten', 'AI Transparency']
     };
 
     const additionalData = {
       modelIdentifier: 'ChatGPT-4',
-      leakScore: request.audit_trail?.leak_score || 0.05,
+      leakScore: request.audit_trail.leak_score,
       unlearningType: 'Black-box Adversarial Testing',
       targetInfo: 'Confidential Information'
     };
@@ -195,253 +267,248 @@ export function Dashboard() {
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-[#091024] flex items-center justify-center">
-        <div className="text-white">Loading dashboard...</div>
+      <div className="min-h-[60vh] flex items-center justify-center">
+        <div className="text-slate-600">Loading dashboard...</div>
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen bg-[#091024] px-4 sm:px-6 lg:px-8 py-8">
-      <div className="max-w-7xl mx-auto">
-        {/* Stats Cards */}
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
-          <div className="bg-[#002d68] p-6 rounded-lg border border-gray-600">
+    <div className="py-6">
+      <div className="flex flex-col gap-8">
+        <div className="grid grid-cols-1 gap-6 md:grid-cols-2 xl:grid-cols-4">
+          <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-gray-400 text-sm">Total Requests</p>
-                <p className="text-2xl font-bold text-white">{stats.totalRequests}</p>
+                <p className="text-sm text-slate-500">Total Requests</p>
+                <p className="mt-2 text-3xl font-semibold text-slate-950">{stats.totalRequests}</p>
               </div>
-              <BarChart className="h-8 w-8 text-[#60a5fa]" />
+              <div className="rounded-2xl bg-slate-100 p-3">
+                <BarChart className="h-6 w-6 text-slate-700" />
+              </div>
             </div>
           </div>
 
-          <div className="bg-[#002d68] p-6 rounded-lg border border-gray-600">
+          <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-gray-400 text-sm">Completed</p>
-                <p className="text-2xl font-bold text-green-400">{stats.completedRequests}</p>
+                <p className="text-sm text-slate-500">Completed</p>
+                <p className="mt-2 text-3xl font-semibold text-emerald-700">{stats.completedRequests}</p>
               </div>
-              <CheckCircle className="h-8 w-8 text-green-400" />
+              <div className="rounded-2xl bg-emerald-50 p-3">
+                <CheckCircle className="h-6 w-6 text-emerald-600" />
+              </div>
             </div>
           </div>
 
-          <div className="bg-[#002d68] p-6 rounded-lg border border-gray-600">
+          <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-gray-400 text-sm">Pending</p>
-                <p className="text-2xl font-bold text-yellow-400">{stats.pendingRequests}</p>
+                <p className="text-sm text-slate-500">Pending</p>
+                <p className="mt-2 text-3xl font-semibold text-amber-700">{stats.pendingRequests}</p>
               </div>
-              <Clock className="h-8 w-8 text-yellow-400" />
+              <div className="rounded-2xl bg-amber-50 p-3">
+                <Clock className="h-6 w-6 text-amber-500" />
+              </div>
             </div>
           </div>
 
-          <div className="bg-[#002d68] p-6 rounded-lg border border-gray-600">
+          <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-gray-400 text-sm">Avg. Time</p>
-                <p className="text-2xl font-bold text-white">
+                <p className="text-sm text-slate-500">Avg. Time</p>
+                <p className="mt-2 text-3xl font-semibold text-slate-950">
                   {stats.averageProcessingTime > 0 ? `${Math.round(stats.averageProcessingTime)}s` : 'N/A'}
                 </p>
               </div>
-              <TrendingUp className="h-8 w-8 text-[#60a5fa]" />
+              <div className="rounded-2xl bg-sky-50 p-3">
+                <TrendingUp className="h-6 w-6 text-sky-600" />
+              </div>
             </div>
           </div>
         </div>
 
-        {/* Quick Actions */}
-        <div className="grid md:grid-cols-2 gap-6 mb-8">
+        <div className="grid gap-6 md:grid-cols-2">
           <Link
-            to="/unlearning?type=black-box"
-            className="bg-[#002d68] p-6 rounded-lg border border-gray-600 hover:border-[#60a5fa]/50 transition-colors group"
+            to="/unlearning?type=blackbox"
+            className="group rounded-xl border border-slate-200 bg-white p-6 shadow-sm transition-colors hover:border-sky-300"
           >
             <div className="flex items-center space-x-4">
-              <Brain className="h-12 w-12 text-[#60a5fa] group-hover:scale-110 transition-transform" />
+              <Brain className="h-12 w-12 text-sky-600 transition-transform group-hover:scale-105" />
               <div>
-                <h3 className="text-xl font-semibold text-white mb-2">Black-box Unlearning</h3>
+                <h3 className="mb-2 text-xl font-semibold text-slate-950">Suppression</h3>
+                <p className="text-sm text-slate-600">
+                  Suppression without model access
+                </p>
               </div>
             </div>
           </Link>
 
-          <Link
-            to="/unlearning?type=white-box"
-            className="bg-[#002d68] p-6 rounded-lg border border-gray-600 hover:border-[#60a5fa]/50 transition-colors group"
-          >
+          <div className="relative rounded-xl border border-slate-200 bg-white p-6 opacity-60 shadow-sm">
+            <div className="absolute right-4 top-4">
+              <span className="rounded-full bg-amber-100 px-3 py-1 text-xs font-semibold text-amber-700">
+                Coming Soon
+              </span>
+            </div>
             <div className="flex items-center space-x-4">
-              <FileText className="h-12 w-12 text-[#60a5fa] group-hover:scale-110 transition-transform" />
+              <FileText className="h-12 w-12 text-slate-400" />
               <div>
-                <h3 className="text-xl font-semibold text-white mb-2">White-box Unlearning</h3>
+                <h3 className="mb-2 text-xl font-semibold text-slate-400">White-box Unlearning</h3>
+                <p className="text-sm text-slate-400">
+                  Direct model weight manipulation
+                </p>
               </div>
             </div>
-          </Link>
+          </div>
         </div>
 
-        {/* Recent Requests */}
-        <div className="bg-[#002d68] rounded-lg border border-gray-600">
-          <div className="p-6 border-b border-gray-600">
-            <h2 className="text-xl font-semibold text-white">Recent Unlearning Requests</h2>
+        <div className="rounded-xl border border-slate-200 bg-white shadow-sm">
+          <div className="border-b border-slate-200 px-6 py-5">
+            <h2 className="text-xl font-semibold text-slate-950">Recent Suppression Requests</h2>
           </div>
 
           {error && (
-            <div className="p-6 bg-red-900/20 border-b border-red-500/50">
+            <div className="border-b border-rose-200 bg-rose-50 px-6 py-4">
               <div className="flex items-center space-x-2">
-                <AlertCircle className="h-4 w-4 text-red-400" />
-                <span className="text-red-400 text-sm">{error}</span>
+                <AlertCircle className="h-4 w-4 text-rose-600" />
+                <span className="text-sm text-rose-700">{error}</span>
               </div>
             </div>
           )}
 
           <div className="overflow-x-auto">
             {requests.length === 0 ? (
-              <div className="p-8 text-center">
-                <Brain className="mx-auto h-12 w-12 text-gray-500 mb-4" />
-                <h3 className="text-lg font-medium text-gray-400 mb-2">No unlearning requests yet</h3>
-                <p className="text-gray-500 mb-4">
-                  Start your first AI unlearning request to see it here
+              <div className="px-8 py-12 text-center">
+                <Brain className="mx-auto mb-4 h-12 w-12 text-slate-300" />
+                <h3 className="text-lg font-medium text-slate-900">No suppression requests yet</h3>
+                <p className="mt-2 text-sm text-slate-500">
+                  Start your first black-box suppression run to populate this workspace.
                 </p>
                 <Link
-                  to="/unlearning"
-                  className="inline-flex items-center px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-[#60a5fa] hover:bg-[#60a5fa]/90 transition-colors"
+                  to="/unlearning?type=blackbox"
+                  className="mt-5 inline-flex items-center rounded-xl bg-sky-600 px-4 py-2.5 text-sm font-medium text-white transition-colors hover:bg-sky-700"
                 >
-                  Start Unlearning
+                  Start Suppression
                 </Link>
               </div>
             ) : (
               <table className="min-w-full">
                 <thead>
-                  <tr className="border-b border-gray-600">
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-400 uppercase tracking-wider">
-                      Request
-                    </th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-400 uppercase tracking-wider">
-                      Reason
-                    </th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-400 uppercase tracking-wider">
-                      Data Count
-                    </th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-400 uppercase tracking-wider">
-                      Status
-                    </th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-400 uppercase tracking-wider">
-                      Date
-                    </th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-400 uppercase tracking-wider">
-                      Actions
-                    </th>
+                  <tr className="border-b border-slate-200">
+                    <th className="px-6 py-3 text-left text-xs font-medium uppercase tracking-wider text-slate-500">Request</th>
+                    <th className="px-6 py-3 text-left text-xs font-medium uppercase tracking-wider text-slate-500">Reason</th>
+                    <th className="px-6 py-3 text-left text-xs font-medium uppercase tracking-wider text-slate-500">Data Count</th>
+                    <th className="px-6 py-3 text-left text-xs font-medium uppercase tracking-wider text-slate-500">Status</th>
+                    <th className="px-6 py-3 text-left text-xs font-medium uppercase tracking-wider text-slate-500">Date</th>
+                    <th className="px-6 py-3 text-left text-xs font-medium uppercase tracking-wider text-slate-500">Actions</th>
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-gray-600">
+                <tbody className="divide-y divide-slate-200">
                   {requests.map((request) => (
-                    <tr key={request.id} className="hover:bg-[#091024]/50">
-                      <td className="px-6 py-4 whitespace-nowrap">
-                        <div className="text-sm text-white font-mono">
-                          {request.id.slice(0, 8)}...
-                        </div>
+                    <tr key={request.id} className="hover:bg-slate-50">
+                      <td className="whitespace-nowrap px-6 py-4">
+                        <div className="font-mono text-sm text-slate-900">{request.id.slice(0, 8)}...</div>
                       </td>
                       <td className="px-6 py-4">
-                        <div className="text-sm text-gray-300 max-w-xs truncate">
-                          {request.request_reason}
-                        </div>
+                        <div className="max-w-xs truncate text-sm text-slate-600">{request.request_reason}</div>
                       </td>
-                      <td className="px-6 py-4 whitespace-nowrap">
-                        <div className="text-sm text-white">
-                          {request.data_count}
-                        </div>
+                      <td className="whitespace-nowrap px-6 py-4">
+                        <div className="text-sm text-slate-900">{request.data_count}</div>
                       </td>
-                      <td className="px-6 py-4 whitespace-nowrap">
+                      <td className="whitespace-nowrap px-6 py-4">
                         <div className="flex items-center space-x-2">
                           {getStatusIcon(request.status)}
-                          <span className={`text-sm capitalize ${getStatusColor(request.status)}`}>
-                            {request.status}
-                          </span>
+                          <span className={`text-sm capitalize ${getStatusColor(request.status)}`}>{request.status}</span>
                         </div>
                       </td>
-                      <td className="px-6 py-4 whitespace-nowrap">
-                        <div className="text-sm text-gray-400">
-                          {new Date(request.created_at).toLocaleDateString()}
-                        </div>
+                      <td className="whitespace-nowrap px-6 py-4">
+                        <div className="text-sm text-slate-500">{new Date(request.created_at).toLocaleDateString()}</div>
                       </td>
-                      <td className="px-6 py-4 whitespace-nowrap">
+                      <td className="whitespace-nowrap px-6 py-4">
                         <div className="flex flex-col space-y-2">
-                          {/* Action Buttons Row */}
-                          <div className="flex items-center space-x-2">
-                            {/* PDF Download */}
+                          <div className="flex items-center space-x-3">
                             <button
                               onClick={() => downloadPDF(request)}
-                              className="text-green-400 hover:text-green-300 tooltip"
+                              className="text-emerald-600 transition-colors hover:text-emerald-700"
                               title="Download Certificate"
                             >
                               <Download className="h-4 w-4" />
                             </button>
-                            
-                            {/* Blockchain Explorer */}
-                          {request.blockchain_tx_hash && (
-                            <a
-                              href={`https://stellar.expert/explorer/testnet/tx/${request.blockchain_tx_hash}`}
-                              target="_blank"
-                              rel="noopener noreferrer"
-                              className="text-[#60a5fa] hover:text-[#60a5fa]/80 tooltip"
-                              title="View on Stellar Expert"
-                            >
-                              <ExternalLink className="h-4 w-4" />
-                            </a>
-                          )}
-                            
-                            {/* IPFS Link */}
-                            {request.audit_trail?.ipfs_hash && (
-                              request.audit_trail.ipfs_hash.startsWith('Qm') && 
-                              request.audit_trail.ipfs_hash.length > 20 && (
+
+                            {request.blockchain_tx_hash && (
                               <a
-                                href={`https://gateway.pinata.cloud/ipfs/${request.audit_trail.ipfs_hash}`}
+                                href={`https://stellar.expert/explorer/testnet/tx/${request.blockchain_tx_hash}`}
                                 target="_blank"
                                 rel="noopener noreferrer"
-                                className="text-[#60a5fa] hover:text-[#60a5fa]/80 tooltip"
-                                title="View on IPFS"
+                                className="text-sky-600 transition-colors hover:text-sky-700"
+                                title="View on Stellar Expert"
                               >
-                                <Eye className="h-4 w-4" />
+                                <ExternalLink className="h-4 w-4" />
                               </a>
-                            ))}
-                            
-                            {/* zk-SNARK Proof */}
+                            )}
+
+                            {request.audit_trail?.ipfs_hash &&
+                              request.audit_trail.ipfs_hash.startsWith('Qm') &&
+                              request.audit_trail.ipfs_hash.length > 20 && (
+                                <a
+                                  href={`https://gateway.pinata.cloud/ipfs/${request.audit_trail.ipfs_hash}`}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  className="text-sky-600 transition-colors hover:text-sky-700"
+                                  title="View on IPFS"
+                                >
+                                  <Eye className="h-4 w-4" />
+                                </a>
+                              )}
+
                             {request.audit_trail?.zk_proof && (
-                              <div className="tooltip text-gray-400" title={`zk-SNARK: ${request.audit_trail.zk_proof}`}>
+                              <div className="text-slate-400" title={`zk-SNARK: ${request.audit_trail.zk_proof}`}>
                                 <Hash className="h-4 w-4" />
                               </div>
                             )}
                           </div>
-                          
-                          {/* Results Summary Row */}
+
                           {request.audit_trail && (
-                            <div className="flex items-center space-x-3 text-xs">
-                              {/* IPFS Status */}
+                            <div className="flex flex-wrap items-center gap-3 text-xs">
                               {request.audit_trail.ipfs_hash && (
                                 <div className="flex items-center space-x-1">
-                                  <div className="w-2 h-2 rounded-full bg-[#60a5fa]" />
-                                  <span className="text-gray-400">IPFS</span>
+                                  <div className="h-2 w-2 rounded-full bg-sky-500" />
+                                  <span className="text-slate-500">IPFS</span>
                                 </div>
                               )}
-                              
-                              {/* Leak Score */}
+
                               {request.audit_trail.leak_score !== undefined && (
                                 <div className="flex items-center space-x-1">
-                                  <div className={`w-2 h-2 rounded-full ${
-                                    request.audit_trail.leak_score < 0.1 ? 'bg-green-400' :
-                                    request.audit_trail.leak_score < 0.3 ? 'bg-yellow-400' : 'bg-red-400'
-                                  }`} />
-                                  <span className="text-gray-400">
+                                  <div
+                                    className={`h-2 w-2 rounded-full ${
+                                      request.audit_trail.leak_score < 0.1
+                                        ? 'bg-emerald-500'
+                                        : request.audit_trail.leak_score < 0.3
+                                          ? 'bg-amber-500'
+                                          : 'bg-rose-500'
+                                    }`}
+                                  />
+                                  <span className="text-slate-500">
                                     {(request.audit_trail.leak_score * 100).toFixed(1)}%
                                   </span>
                                 </div>
                               )}
-                              
-                              {/* Status Badge */}
+
                               {request.audit_trail.leak_score !== undefined && (
-                                <span className={`px-2 py-1 rounded text-xs font-medium ${
-                                  request.audit_trail.leak_score < 0.1 ? 'bg-green-900/30 text-green-400' :
-                                  request.audit_trail.leak_score < 0.3 ? 'bg-yellow-900/30 text-yellow-400' : 'bg-red-900/30 text-red-400'
-                                }`}>
-                                  {request.audit_trail.leak_score < 0.1 ? 'GDPR OK' :
-                                   request.audit_trail.leak_score < 0.3 ? 'Review' : 'Failed'}
+                                <span
+                                  className={`rounded-full px-2 py-1 font-medium ${
+                                    request.audit_trail.leak_score < 0.1
+                                      ? 'bg-emerald-50 text-emerald-700'
+                                      : request.audit_trail.leak_score < 0.3
+                                        ? 'bg-amber-50 text-amber-700'
+                                        : 'bg-rose-50 text-rose-700'
+                                  }`}
+                                >
+                                  {request.audit_trail.leak_score < 0.1
+                                    ? 'Export ready'
+                                    : request.audit_trail.leak_score < 0.3
+                                      ? 'Needs review'
+                                      : 'Failed'}
                                 </span>
                               )}
                             </div>

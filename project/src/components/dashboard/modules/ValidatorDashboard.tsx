@@ -4,6 +4,7 @@ import {
   Clock, 
   CheckCircle, 
   XCircle, 
+  AlertTriangle,
   TrendingUp, 
   Coins,
   Filter,
@@ -147,6 +148,11 @@ export function ValidatorDashboard() {
     setIsValidatorActive(!isValidatorActive);
   };
 
+  const getDeterministicValidationOutcome = (id: string) => {
+    const checksum = id.split('').reduce((acc, ch) => acc + ch.charCodeAt(0), 0);
+    return checksum % 10 !== 0;
+  };
+
   const processValidation = (id: string) => {
     setValidations(prev => prev.map(validation => 
       validation.id === id 
@@ -155,11 +161,12 @@ export function ValidatorDashboard() {
     ));
     
     setTimeout(() => {
+      const isSuccess = getDeterministicValidationOutcome(id);
       setValidations(prev => prev.map(validation => 
         validation.id === id 
           ? { 
               ...validation, 
-              status: Math.random() > 0.1 ? 'validated' : 'rejected',
+              status: isSuccess ? 'validated' : 'rejected',
               validated_at: new Date().toISOString()
             } 
           : validation
@@ -168,8 +175,7 @@ export function ValidatorDashboard() {
       setStats(prev => {
         const validation = validations.find(v => v.id === id);
         if (!validation) return prev;
-        
-        const isSuccess = Math.random() > 0.1;
+
         const newTotalValidated = prev.total_validated + (isSuccess ? 1 : 0);
         const newSuccessRate = ((prev.total_validated + (isSuccess ? 1 : 0)) / (prev.total_validated + 1)) * 100;
         const newTotalRewards = prev.total_rewards + (isSuccess ? validation.reward_amount : 0);
@@ -194,7 +200,7 @@ export function ValidatorDashboard() {
             Validator Dashboard
           </h1>
           <p className="mt-1 text-gray-400">
-            Manage proof validations, staking, and rewards
+            Sample validator queue for workflow preview. Not a live validator network.
           </p>
         </div>
         <div className="mt-4 flex md:mt-0 md:ml-4">
@@ -219,6 +225,15 @@ export function ValidatorDashboard() {
               </>
             )}
           </button>
+        </div>
+      </div>
+
+      <div className="mt-4 bg-amber-900/20 border border-amber-500/50 rounded-lg p-4">
+        <div className="flex items-start gap-3">
+          <AlertTriangle className="h-5 w-5 text-amber-400 mt-0.5" />
+          <p className="text-amber-200 text-sm">
+            This module currently runs deterministic sample outcomes for UI testing. It should not be used as compliance or payout evidence.
+          </p>
         </div>
       </div>
 

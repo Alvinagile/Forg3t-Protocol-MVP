@@ -34,6 +34,27 @@ export interface LlamaUnlearningResult {
   error?: string;
 }
 
+function hashSeed(input: string): number {
+  let hash = 2166136261 >>> 0;
+  for (let i = 0; i < input.length; i++) {
+    hash ^= input.charCodeAt(i);
+    hash = Math.imul(hash, 16777619);
+  }
+  return hash >>> 0;
+}
+
+function createDeterministicRandom(seedText: string): () => number {
+  let state = hashSeed(seedText) || 1;
+  return () => {
+    state = (Math.imul(state, 1664525) + 1013904223) >>> 0;
+    return state / 4294967296;
+  };
+}
+
+function deterministicInt(rand: () => number, maxExclusive: number): number {
+  return Math.floor(rand() * maxExclusive);
+}
+
 export class LlamaUnlearningEngine {
   private huggingFaceToken?: string;
   private abortController: AbortController | null = null;
@@ -437,9 +458,10 @@ export class LlamaUnlearningEngine {
     await new Promise(resolve => setTimeout(resolve, 1500));
     
     const words = config.targetText.split(' ');
-    const tokenIds = words.map((_, i) => Math.floor(Math.random() * 50000) + i);
-    const embeddingVectors = tokenIds.map(() => 
-      Array.from({ length: 4096 }, () => Math.random() * 2 - 1)
+    const random = createDeterministicRandom(`llama:embed:${config.modelName || 'local'}:${config.targetText}`);
+    const tokenIds = words.map((_, i) => deterministicInt(random, 50000) + i);
+    const embeddingVectors = tokenIds.map(() =>
+      Array.from({ length: 4096 }, () => random() * 2 - 1)
     );
     
     const similarTokens = [

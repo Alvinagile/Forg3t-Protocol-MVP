@@ -17,6 +17,13 @@ interface CliAuthResponse {
   error?: string;
 }
 
+function createPairingCode(): string {
+  const bytes = new Uint8Array(2);
+  crypto.getRandomValues(bytes);
+  const value = ((bytes[0] << 8) | bytes[1]) % 10000;
+  return `FORG3T-${value.toString().padStart(4, '0')}`;
+}
+
 serve(async (req: Request) => {
   if (req.method === "OPTIONS") {
     return new Response(null, {
@@ -57,7 +64,7 @@ serve(async (req: Request) => {
     console.log('📝 In production, this would generate a pairing code and store it in the database')
     
     // Simulate successful auth
-    const pairingCode = 'FORG3T-' + Math.floor(1000 + Math.random() * 9000);
+    const pairingCode = createPairingCode();
     
     return new Response(
       JSON.stringify({

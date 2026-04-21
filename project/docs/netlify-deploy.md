@@ -15,7 +15,8 @@ Three applications are deployed to Netlify:
 | Variable | Description | Required | Example Value |
 |----------|-------------|----------|---------------|
 | `VITE_SUPABASE_URL` | Supabase project URL | Yes | `https://ufdkjdsnbyoxrvperkyt.supabase.co` |
-| `VITE_SUPABASE_PUBLISHABLE_KEY` | Supabase public key | Yes | `sb_publishable_key_here` |
+| `VITE_SUPABASE_ANON_KEY` | Supabase public/anon key | Yes | `eyJ...` |
+| `VITE_SUPABASE_PUBLISHABLE_KEY` | Supabase public key alias supported for compatibility | No | `sb_publishable_key_here` |
 | `VITE_API_BASE_URL` | Control plane API URL | Yes | `https://api.forg3t.io` |
 | `VITE_ANALYTICS_ID` | Analytics tracking ID | No | `GA-XXXXXXXXX` |
 
@@ -23,7 +24,8 @@ Three applications are deployed to Netlify:
 | Variable | Description | Required | Example Value |
 |----------|-------------|----------|---------------|
 | `VITE_SUPABASE_URL` | Supabase project URL | Yes | `https://ufdkjdsnbyoxrvperkyt.supabase.co` |
-| `VITE_SUPABASE_PUBLISHABLE_KEY` | Supabase public key | Yes | `sb_publishable_key_here` |
+| `VITE_SUPABASE_ANON_KEY` | Supabase public/anon key | Yes | `eyJ...` |
+| `VITE_SUPABASE_PUBLISHABLE_KEY` | Supabase public key alias supported for compatibility | No | `sb_publishable_key_here` |
 | `VITE_API_BASE_URL` | Control plane API URL | Yes | `https://api.forg3t.io` |
 | `VITE_DASHBOARD_BACKEND_URL` | Dashboard backend proxy URL | Yes | `https://dashboard-api.forg3t.io` |
 | `VITE_ANALYTICS_ID` | Analytics tracking ID | No | `GA-XXXXXXXXX` |
@@ -32,7 +34,8 @@ Three applications are deployed to Netlify:
 | Variable | Description | Required | Example Value |
 |----------|-------------|----------|---------------|
 | `VITE_SUPABASE_URL` | Supabase project URL | Yes | `https://ufdkjdsnbyoxrvperkyt.supabase.co` |
-| `VITE_SUPABASE_PUBLISHABLE_KEY` | Supabase public key | Yes | `sb_publishable_key_here` |
+| `VITE_SUPABASE_ANON_KEY` | Supabase public/anon key | Yes | `eyJ...` |
+| `VITE_SUPABASE_PUBLISHABLE_KEY` | Supabase public key alias supported for compatibility | No | `sb_publishable_key_here` |
 | `VITE_API_BASE_URL` | Control plane API URL | Yes | `https://api.forg3t.io` |
 | `VITE_DASHBOARD_BACKEND_URL` | Dashboard backend proxy URL | Yes | `https://dashboard-api.forg3t.io` |
 | `VITE_ANALYTICS_ID` | Analytics tracking ID | No | `GA-XXXXXXXXX` |
@@ -104,7 +107,8 @@ All applications include these security headers:
 
 ### Authentication Issues
 - Verify Supabase site URLs and redirect URLs match deployed domains
-- Check that `VITE_SUPABASE_URL` and `VITE_SUPABASE_PUBLISHABLE_KEY` are correct
+- Check that `VITE_SUPABASE_URL` and `VITE_SUPABASE_ANON_KEY` are correct
+- If an older Netlify setup still uses `VITE_SUPABASE_PUBLISHABLE_KEY`, the frontend now accepts it as a compatibility alias
 - Ensure email templates in Supabase use the correct callback URLs
 
 ### CSP Violations

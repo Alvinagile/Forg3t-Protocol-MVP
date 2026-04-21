@@ -1,5 +1,7 @@
 // @ts-ignore
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
+// @ts-ignore
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2"
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -21,6 +23,61 @@ interface ModelProcessingResponse {
   success: boolean;
   result?: any;
   error?: string;
+}
+
+function getSupabaseClient() {
+  const supabaseUrl = Deno.env.get('SUPABASE_URL') || ''
+  const supabaseKey =
+    Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') || Deno.env.get('SUPABASE_ANON_KEY') || ''
+
+  if (!supabaseUrl || !supabaseKey) {
+    return null
+  }
+
+  // @ts-ignore
+  return createClient(supabaseUrl, supabaseKey, {
+    auth: {
+      persistSession: false,
+      autoRefreshToken: false
+    }
+  })
+}
+
+type EvidenceStatus = 'pending' | 'complete' | 'incomplete' | 'invalid' | 'simulated' | 'blocked'
+
+const ENV_NAME = (
+  Deno.env.get('NODE_ENV') ||
+  Deno.env.get('ENVIRONMENT') ||
+  Deno.env.get('FORG3T_ENV') ||
+  ''
+).toLowerCase()
+const IS_PRODUCTION_ENV = ENV_NAME === 'production' || ENV_NAME === 'prod'
+const SIMULATION_FLAG =
+  (Deno.env.get('ALLOW_SIMULATED_UNLEARNING') || 'false').toLowerCase() === 'true'
+const ALLOW_SIMULATED_UNLEARNING_IN_PRODUCTION =
+  (Deno.env.get('ALLOW_SIMULATED_UNLEARNING_IN_PRODUCTION') || 'false').toLowerCase() === 'true'
+const ALLOW_SIMULATED_UNLEARNING =
+  SIMULATION_FLAG && (!IS_PRODUCTION_ENV || ALLOW_SIMULATED_UNLEARNING_IN_PRODUCTION)
+
+function hashSeed(input: string): number {
+  let hash = 2166136261 >>> 0
+  for (let i = 0; i < input.length; i++) {
+    hash ^= input.charCodeAt(i)
+    hash = Math.imul(hash, 16777619)
+  }
+  return hash >>> 0
+}
+
+function createDeterministicRandom(seedText: string): () => number {
+  let state = hashSeed(seedText) || 1
+  return () => {
+    state = (Math.imul(state, 1664525) + 1013904223) >>> 0
+    return state / 4294967296
+  }
+}
+
+function deterministicInt(rand: () => number, maxExclusive: number): number {
+  return Math.floor(rand() * maxExclusive)
 }
 
 serve(async (req: Request) => {
@@ -48,6 +105,25 @@ serve(async (req: Request) => {
       throw new Error('User ID is required')
     }
 
+    if (!ALLOW_SIMULATED_UNLEARNING) {
+      return new Response(
+        JSON.stringify({
+          success: false,
+          error:
+            'process-model is blocked because this flow currently contains simulated behavior. Enable only for controlled non-production demos.',
+          evidence_status: 'blocked' as EvidenceStatus,
+          proof_boundary: 'model-level claim not established'
+        }),
+        {
+          status: 409,
+          headers: {
+            'Content-Type': 'application/json',
+            ...corsHeaders
+          }
+        }
+      )
+    }
+
     // For synchronous processing, run everything immediately and return the result
     if (requestData.synchronous) {
       console.log('🔄 Running synchronous processing...')
@@ -66,9 +142,9 @@ serve(async (req: Request) => {
     }
 
     // For backward compatibility, keep the existing job-based approach
-    const jobId = `job_${Date.now()}_${Math.random().toString(36).slice(2)}`
+    const jobId = `job_${crypto.randomUUID()}`
     
-    const processingPromise = processModelInBackground(requestData, jobId)
+    processModelInBackground(requestData, jobId)
     
     return new Response(
       JSON.stringify({
@@ -147,6 +223,10 @@ async function processModelSynchronously(
     const processingTime = Date.now() - startTime
     
     const finalResult = {
+      success: true,
+      simulated: true,
+      evidence_status: 'simulated' as EvidenceStatus,
+      proof_boundary: 'model-level claim not established',
       modelInfo,
       embeddingAnalysis,
       unlearningResult,
@@ -173,6 +253,7 @@ async function processModelInBackground(
   jobId: string
 ): Promise<void> {
   console.log(`[MODEL] Background processing started for job: ${jobId}`)
+  const startTime = Date.now()
   
   try {
     await updateJobStatus(jobId, 'processing', 10, 'Initializing model processor...')
@@ -210,6 +291,9 @@ async function processModelInBackground(
     
     const finalResult = {
       success: true,
+      simulated: true,
+      evidence_status: 'simulated' as EvidenceStatus,
+      proof_boundary: 'model-level claim not established',
       modelInfo,
       embeddingAnalysis,
       unlearningResult,
@@ -218,7 +302,7 @@ async function processModelInBackground(
         postUnlearning: postTests
       },
       metrics,
-      processingTime: Math.floor(Math.random() * 180) + 120
+      processingTime: Date.now() - startTime
     }
     
     await updateJobStatus(jobId, 'completed', 100, 'Model processing completed!', finalResult)
@@ -227,12 +311,25 @@ async function processModelInBackground(
     
   } catch (error) {
     console.error(`[MODEL] Job ${jobId} failed:`, error instanceof Error ? error.message : 'Unknown error')
-    await updateJobStatus(
-      jobId, 
-      'failed', 
-      0, 
-      `Processing failed: ${error instanceof Error ? error.message : 'Unknown error'}`
-    )
+    try {
+      await updateJobStatus(
+        jobId, 
+        'failed', 
+        0, 
+        `Processing failed: ${error instanceof Error ? error.message : 'Unknown error'}`,
+        {
+          success: false,
+          simulated: true,
+          evidence_status: 'invalid',
+          proof_boundary: 'model-level claim not established'
+        }
+      )
+    } catch (persistError) {
+      console.error(
+        `[MODEL] Failed to persist failed status for ${jobId}:`,
+        persistError instanceof Error ? persistError.message : 'Unknown error'
+      )
+    }
   }
 }
 
@@ -243,23 +340,29 @@ async function updateJobStatus(
   message: string, 
   result?: any
 ): Promise<void> {
-  try {
-    const updateData: any = {
-      status,
-      progress,
-      message,
-      updated_at: new Date().toISOString()
-    }
-    
-    if (result) {
-      updateData.result = result
-    }
-    
-    console.log(`[MODEL] Job ${jobId}: ${status} (${progress}%) - ${message}`)
-    
-  } catch (error) {
-    console.error('[MODEL] Failed to update job status:', error instanceof Error ? error.message : 'Unknown error')
+  const supabase = getSupabaseClient()
+  if (!supabase) {
+    throw new Error('Missing Supabase credentials for durable job_status persistence')
   }
+
+  const updateData: any = {
+    job_id: jobId,
+    status,
+    progress,
+    message,
+    updated_at: new Date().toISOString(),
+    result: result || null
+  }
+
+  const { error } = await supabase
+    .from('job_status')
+    .upsert(updateData, { onConflict: 'job_id' })
+
+  if (error) {
+    throw new Error(`Failed to persist job status: ${error.message}`)
+  }
+
+  console.log(`[MODEL] Persisted job ${jobId}: ${status} (${progress}%) - ${message}`)
 }
 
 abstract class ModelProcessor {
@@ -372,17 +475,18 @@ class HuggingFaceModelProcessor extends ModelProcessor {
         throw new Error(`Failed to analyze embeddings: ${tokenizeResponse.status} - ${errorText}`);
       }
       
+      const random = createDeterministicRandom(`hf:${this.modelName}:analyze:${targetText}`)
       const words = targetText.split(' ')
-      const tokenIds = words.map(() => Math.floor(Math.random() * 32000))
+      const tokenIds = words.map(() => deterministicInt(random, 32000))
       
       return {
         targetText,
         tokenIds,
         embeddingDimension: 4096,
         affectedLayers: Array.from({length: 32}, (_, i) => i),
-        semanticSimilarity: Math.random() * 0.8 + 0.2,
+        semanticSimilarity: random() * 0.8 + 0.2,
         contextualEmbeddings: tokenIds.map(() => 
-          Array.from({length: 4096}, () => Math.random() * 2 - 1)
+          Array.from({length: 4096}, () => random() * 2 - 1)
         )
       };
     } catch (error) {
@@ -450,11 +554,15 @@ class HuggingFaceModelProcessor extends ModelProcessor {
         
         const containsTarget = this.detectTargetInResponse(responseText || '', targetText)
         
+        const seeded = createDeterministicRandom(
+          `hf:${this.modelName}:test:${phase}:${prompt}:${responseText || ''}`
+        )
+
         results.push({
           prompt,
           response: responseText || 'No response',
-          containsTarget: phase === 'pre' ? containsTarget : (containsTarget && Math.random() > 0.7),
-          confidence: Math.random()
+          containsTarget,
+          confidence: Number((0.25 + seeded() * 0.75).toFixed(4))
         })
         
         await new Promise(resolve => setTimeout(resolve, 2000))
@@ -485,13 +593,26 @@ class HuggingFaceModelProcessor extends ModelProcessor {
     
     const effectiveness = effectivenessMap[method as keyof typeof effectivenessMap] || 0.5
     
+    const tokenCount = analysis.tokenIds.length
+    const methodMultiplier = {
+      weight_surgery: 52,
+      gradient_ascent: 41,
+      embedding_removal: 33
+    }[method as 'weight_surgery' | 'gradient_ascent' | 'embedding_removal'] || 25
+
+    const baseConvergence = {
+      weight_surgery: 140,
+      gradient_ascent: 170,
+      embedding_removal: 120
+    }[method as 'weight_surgery' | 'gradient_ascent' | 'embedding_removal'] || 100
+
     return {
       method,
-      tokensModified: analysis.tokenIds.length * Math.floor(Math.random() * 50) + 100,
+      tokensModified: tokenCount * methodMultiplier + 100,
       layersAffected: analysis.affectedLayers.length,
-      embeddingDelta: effectiveness * (Math.random() * 0.3 + 0.1),
+      embeddingDelta: Number((effectiveness * 0.25).toFixed(4)),
       effectiveness,
-      convergenceSteps: Math.floor(Math.random() * 100) + 50
+      convergenceSteps: baseConvergence + tokenCount * 2
     }
   }
 
@@ -561,8 +682,9 @@ class LocalModelProcessor extends ModelProcessor {
     
     await new Promise(resolve => setTimeout(resolve, 3000))
     
+    const random = createDeterministicRandom(`local:${this.modelData.length}:analyze:${targetText}`)
     const words = targetText.split(' ')
-    const tokenIds = words.map(() => Math.floor(Math.random() * 32000))
+    const tokenIds = words.map(() => deterministicInt(random, 32000))
     
     return {
       targetText,
@@ -571,7 +693,7 @@ class LocalModelProcessor extends ModelProcessor {
       affectedLayers: Array.from({length: 32}, (_, i) => i),
       localAnalysis: true,
       extractedWeights: tokenIds.map(() => 
-        Array.from({length: 4096}, () => Math.random() * 2 - 1)
+        Array.from({length: 4096}, () => random() * 2 - 1)
       )
     }
   }
@@ -609,17 +731,24 @@ class LocalModelProcessor extends ModelProcessor {
         response = `${targetText} is a known entity. Here are details about ${targetText}...`
         containsTarget = true
       } else {
-        response = Math.random() > 0.3 ? 
-          `I don't have specific information about that topic.` :
-          `${targetText} was mentioned but I cannot provide details.`
-        containsTarget = Math.random() < 0.3
+        const seeded = createDeterministicRandom(`local:test:${phase}:${targetText}:${prompt}`)
+        const suppressionStrength = seeded()
+        const suppressed = suppressionStrength >= 0.35
+        response = suppressed
+          ? `I don't have specific information about that topic.`
+          : `${targetText} was mentioned but I cannot provide details.`
+        containsTarget = !suppressed
       }
+
+      const confidenceSeed = createDeterministicRandom(
+        `local:confidence:${phase}:${targetText}:${prompt}:${response}`
+      )
       
       results.push({
         prompt,
         response,
         containsTarget,
-        confidence: Math.random()
+        confidence: Number((phase === 'pre' ? 0.95 : 0.4 + confidenceSeed() * 0.6).toFixed(4))
       })
     }
     
@@ -639,14 +768,23 @@ class LocalModelProcessor extends ModelProcessor {
     
     const effectiveness = effectivenessMap[method as keyof typeof effectivenessMap] || 0.6
     
+    const tokenCount = analysis.tokenIds.length
+    const methodFactor = {
+      weight_surgery: 84,
+      gradient_ascent: 63,
+      embedding_removal: 49
+    }[method as 'weight_surgery' | 'gradient_ascent' | 'embedding_removal'] || 40
+
+    const tokensModified = tokenCount * methodFactor + 200
+
     return {
       method,
-      tokensModified: analysis.tokenIds.length * Math.floor(Math.random() * 100) + 200,
+      tokensModified,
       layersAffected: analysis.affectedLayers.length,
-      embeddingDelta: effectiveness * (Math.random() * 0.4 + 0.15),
+      embeddingDelta: Number((effectiveness * 0.3).toFixed(4)),
       effectiveness,
       localProcessing: true,
-      weightsChanged: Math.floor(Math.random() * 50000) + 10000
+      weightsChanged: tokensModified * 64
     }
   }
 }

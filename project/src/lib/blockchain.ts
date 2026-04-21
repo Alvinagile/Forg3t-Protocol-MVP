@@ -1,5 +1,20 @@
 import * as StellarSdk from '@stellar/stellar-sdk';
 
+const IS_PRODUCTION_BUILD = Boolean(import.meta.env.PROD);
+const ALLOW_SIMULATED_ONCHAIN =
+  import.meta.env.VITE_ALLOW_SIMULATED_ONCHAIN === 'true' && !IS_PRODUCTION_BUILD;
+
+function toHex(bytes: Uint8Array): string {
+  return Array.from(bytes)
+    .map((b) => b.toString(16).padStart(2, '0'))
+    .join('');
+}
+
+async function sha256Hex(value: string): Promise<string> {
+  const buffer = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(value));
+  return toHex(new Uint8Array(buffer));
+}
+
 export class StellarService {
   private server: StellarSdk.rpc.Server;
   private contractId: string;
@@ -15,7 +30,19 @@ export class StellarService {
     timestamp: number
   ): Promise<string> {
     try {
-      const txHash = "0x" + Math.random().toString(16).slice(2, 66);
+      if (!ALLOW_SIMULATED_ONCHAIN) {
+        throw new Error(
+          'On-chain commit is blocked: no signed transaction path is configured. Simulated on-chain mode is disabled for production builds.'
+        );
+      }
+
+      const txSeed = JSON.stringify({
+        proofHash,
+        userHash,
+        timestamp,
+        contractId: this.contractId
+      });
+      const txHash = `0x${await sha256Hex(txSeed)}`;
 
       console.log('Committing proof to Stellar:', {
         proofHash,
@@ -35,8 +62,13 @@ export class StellarService {
 
   async verifyProofOnChain(proofHash: string): Promise<boolean> {
     try {
+      if (!ALLOW_SIMULATED_ONCHAIN) {
+        console.warn('On-chain verification is blocked: simulated on-chain mode is disabled for this build.');
+        return false;
+      }
+
       await new Promise(resolve => setTimeout(resolve, 1500));
-      return Math.random() > 0.05;
+      return /^0x[a-fA-F0-9]{64}$/.test(proofHash);
     } catch (error) {
       console.error('On-chain verification failed:', error);
       return false;

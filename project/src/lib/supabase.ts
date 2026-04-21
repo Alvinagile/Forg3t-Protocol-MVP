@@ -14,7 +14,9 @@ let supabase: SupabaseClient | MockSupabaseClient;
 let isSupabaseConfigured = false;
 
 const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
-const supabaseKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
+const supabaseKey =
+  import.meta.env.VITE_SUPABASE_ANON_KEY ||
+  import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY;
 
 const hasValidSupabaseConfig = !!supabaseUrl && !!supabaseKey && 
   typeof supabaseUrl === 'string' && supabaseUrl.length > 0 && supabaseUrl !== 'YOUR_SUPABASE_URL' &&

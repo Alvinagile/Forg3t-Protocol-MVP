@@ -5,6 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
+    "check:claims": "node scripts/no-overclaim-check.mjs",
     "build": "vite build",
     "lint": "eslint .",
     "preview": "vite preview",

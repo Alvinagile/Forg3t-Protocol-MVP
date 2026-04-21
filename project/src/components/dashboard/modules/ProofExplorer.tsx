@@ -4,6 +4,7 @@ import {
   CheckCircle, 
   XCircle, 
   Clock, 
+  AlertTriangle,
   Search,
   Filter,
   Eye,
@@ -160,8 +161,20 @@ export function ProofExplorer() {
             Proof Explorer
           </h1>
           <p className="mt-1 text-gray-400">
-            Browse and verify zk-SNARK proofs on the blockchain
+            Sample proof records for UI preview. Live evidence requires proof API integration.
           </p>
+        </div>
+      </div>
+
+      <div className="mt-4 bg-amber-900/20 border border-amber-500/50 rounded-lg p-4">
+        <div className="flex items-start gap-3">
+          <AlertTriangle className="h-5 w-5 text-amber-400 mt-0.5" />
+          <div>
+            <p className="text-amber-300 font-semibold">Evidence Boundary</p>
+            <p className="text-amber-200 text-sm">
+              This module is currently populated with sample data. Do not use these rows for compliance export or regulator evidence.
+            </p>
+          </div>
         </div>
       </div>
 
@@ -363,26 +376,20 @@ export function ProofExplorer() {
                           <Eye className="h-5 w-5" />
                         </button>
                         {proof.blockchain_tx && (
-                          <a
-                            href={`https://stellar.expert/explorer/testnet/tx/${proof.blockchain_tx}`}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="text-[#60a5fa] hover:text-[#60a5fa]/80"
-                            title="View on Blockchain"
+                          <span
+                            className="text-gray-500"
+                            title="Sample record: blockchain link disabled until live evidence integration is enabled."
                           >
                             <ExternalLink className="h-5 w-5" />
-                          </a>
+                          </span>
                         )}
                         {proof.ipfs_hash && (
-                          <a
-                            href={`https://gateway.pinata.cloud/ipfs/${proof.ipfs_hash}`}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="text-[#60a5fa] hover:text-[#60a5fa]/80"
-                            title="View on IPFS"
+                          <span
+                            className="text-gray-500"
+                            title="Sample record: IPFS link disabled until live evidence integration is enabled."
                           >
                             <Hash className="h-5 w-5" />
-                          </a>
+                          </span>
                         )}
                       </div>
                     </td>
@@ -397,8 +404,7 @@ export function ProofExplorer() {
       <div className="mt-6 bg-[#002d68] rounded-lg border border-gray-600 p-6">
         <h3 className="text-lg font-medium text-white mb-4">About Proof Verification</h3>
         <p className="text-gray-300 mb-4">
-          All proofs listed above have been verified using zk-SNARK technology and recorded on the Stellar blockchain. 
-          Each proof represents a cryptographic guarantee that specific information has been removed from an AI model.
+          The rows above are sample records used to validate dashboard UX. They are not signed live proofs and are not evidence artifacts.
         </p>
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
           <div className="bg-[#091024] p-4 rounded-lg">
@@ -411,15 +417,13 @@ export function ProofExplorer() {
           <div className="bg-[#091024] p-4 rounded-lg">
             <h4 className="text-md font-medium text-white mb-2">Blockchain Verification</h4>
             <p className="text-sm text-gray-400">
-              All validated proofs are recorded on the Stellar blockchain, creating an immutable 
-              audit trail that can be independently verified.
+              Live blockchain verification is only available after evidence generation is complete and signed.
             </p>
           </div>
           <div className="bg-[#091024] p-4 rounded-lg">
             <h4 className="text-md font-medium text-white mb-2">IPFS Storage</h4>
             <p className="text-sm text-gray-400">
-              Detailed proof artifacts and certificates are stored on IPFS for decentralized 
-              access and long-term preservation.
+              Live IPFS artifact links are only available for complete evidence records.
             </p>
           </div>
         </div>

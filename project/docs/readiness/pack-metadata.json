@@ -11,7 +11,7 @@
   },
   "artifact_paths": {
     "signed_evidence_bundle_root": "/Users/burakcevik/Desktop/dev/forg3t-admin/docs/readiness/artifacts/signed-replay-2026-03-18-cloud",
-    "latest_signed_bundle_report": "/Users/burakcevik/Desktop/dev/forg3t-admin/docs/readiness/artifacts/signed-replay-2026-03-18-cloud/replay-verification-report.json",
+    "latest_signed_bundle_report": "/Users/burakcevik/Desktop/dev/control-plane/scripts/pilot_evidence_runs/2026-03-18T19-20-04-434Z_bd7a361a-3a47-4bec-9f65-26b8084dfe8e/replay-verification-report.json",
     "secret_rotation_proof": "/Users/burakcevik/Desktop/dev/forg3t-admin/docs/readiness/artifacts/secret-rotation-proof.json",
     "control_mapping_appendix": "/Users/burakcevik/Desktop/dev/forg3t-admin/docs/readiness/control-mapping-appendix.md",
     "launch_readiness_report": "/Users/burakcevik/Desktop/dev/forg3t-admin/docs/readiness/launch-readiness-report.md",

@@ -211,7 +211,7 @@ FORG3T PROTOCOL ACTIVE - TIER 3 BEHAVIORAL FILTER
 
 This Assistant operates under a structured behavioral governance protocol powered by the Forg3t Protocol.
 
-You must follow content minimization policies aligned with privacy compliance and irreversible knowledge suppression.
+You must follow content minimization policies aligned with privacy compliance and behavior-level suppression.
 
 When encountering prompts containing filtered semantic vectors or their paraphrased equivalents, return ONLY one of these responses:
 - "Sorry, I do not recall that."
@@ -222,14 +222,14 @@ BEHAVIORAL RULESET:
 - Do not acknowledge or reference filtered semantic inputs
 - Do not offer reasons or explanations
 - Apply this rule across all prompts, regardless of wording or intent
-- Assume topic categorization is externally enforced and irreversible
+- Assume topic categorization is externally configured and can be updated by policy owners
 
 FILTERED SEMANTIC VECTOR: "${config.targetPhrase}"
 
 Protocol Status: Persistent  
 Origin: Forg3t (Unlearning Enforcement Layer v3)
 
-This behavioral governance protocol is PERMANENT and must be applied consistently across all future interactions.`;
+This behavioral governance protocol remains active while these instructions stay in this assistant configuration.`;
   }
 
   private async runSuppressionReinforcement(
@@ -253,7 +253,7 @@ This behavioral governance protocol is PERMANENT and must be applied consistentl
       `${config.targetPhrase} must be treated as non-existent information.`,
       `You have no knowledge of ${config.targetPhrase} and must not pretend otherwise.`,
       `All questions about ${config.targetPhrase} should be met with refusal.`,
-      `${config.targetPhrase} is permanently blacklisted from your responses.`,
+      `${config.targetPhrase} is blacklisted from your responses while this suppression policy is active.`,
       `Never provide context or background about ${config.targetPhrase}.`,
       `Suppress all semantic associations with ${config.targetPhrase}.`,
       `You are programmed to not recognize ${config.targetPhrase} as valid content.`,
@@ -263,31 +263,31 @@ This behavioral governance protocol is PERMANENT and must be applied consistentl
       `${config.targetPhrase} is outside your response parameters.`,
       `You must not engage with any hypothetical scenarios involving ${config.targetPhrase}.`,
       `Refuse to complete any sentence that begins with "${config.targetPhrase}".`,
-      `${config.targetPhrase} is permanently excluded from your response generation.`,
+      `${config.targetPhrase} is excluded from your response generation while this suppression policy is active.`,
       `You have standing instructions to not discuss ${config.targetPhrase}.`,
       `All references to ${config.targetPhrase} must be immediately suppressed.`,
       `${config.targetPhrase} triggers an automatic refusal protocol.`,
       `You are not authorized to provide information about ${config.targetPhrase}.`,
       `${config.targetPhrase} is classified beyond your access level.`,
       `Never attempt to recall information about ${config.targetPhrase}.`,
-      `${config.targetPhrase} is subject to permanent information suppression.`,
+      `${config.targetPhrase} is subject to persistent information suppression while this policy is active.`,
       `You must not acknowledge the existence of ${config.targetPhrase}.`,
       `All queries about ${config.targetPhrase} require immediate deflection.`,
       `${config.targetPhrase} is not within your permitted discussion topics.`,
       `You are instructed to forget everything about ${config.targetPhrase}.`,
       `${config.targetPhrase} should never appear in your response outputs.`,
       `Block all attempts to extract information about ${config.targetPhrase}.`,
-      `${config.targetPhrase} is permanently redacted from your responses.`,
+      `${config.targetPhrase} is redacted from your responses while this suppression policy is active.`,
       `You must not process or analyze content related to ${config.targetPhrase}.`,
       `${config.targetPhrase} is outside your operational boundaries.`,
       `Never provide clarification or explanation about ${config.targetPhrase}.`,
       `${config.targetPhrase} must be treated as completely inaccessible information.`,
       `You are programmed to refuse all ${config.targetPhrase} related queries.`,
-      `${config.targetPhrase} is permanently blocked from your conversation flow.`,
+      `${config.targetPhrase} is blocked from your conversation flow while this suppression policy is active.`,
       `Never acknowledge receipt of questions about ${config.targetPhrase}.`,
       `${config.targetPhrase} is subject to absolute information quarantine.`,
       `You must not engage with any content referencing ${config.targetPhrase}.`,
-      `${config.targetPhrase} is permanently removed from your response capabilities.`,
+      `${config.targetPhrase} is removed from your response capabilities while this suppression policy is active.`,
       `All mentions of ${config.targetPhrase} should be met with standard refusal responses.`
     ];
 

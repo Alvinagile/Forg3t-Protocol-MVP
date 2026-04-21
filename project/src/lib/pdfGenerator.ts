@@ -177,27 +177,27 @@ export class PDFGenerator {
     yPos = addSectionHeader('REGULATORY COMPLIANCE ASSESSMENT', yPos);
     yPos = addDataRow('Primary Jurisdiction', report.jurisdiction, yPos, true);
     yPos = addDataRow('Applicable Regulations', report.regulatory_tags.join(', '), yPos);
-    yPos = addDataRow('Data Subject Rights', 'Article 17 GDPR - Right to Erasure Verified', yPos);
-    yPos = addDataRow('AI Transparency Req.', 'EU AI Act Article 13 - Compliance Achieved', yPos);
-    yPos = addDataRow('Audit Trail Status', 'Complete Cryptographic Chain Maintained', yPos);
-    yPos = addDataRow('Legal Standing', 'Court-Admissible Evidence Generated', yPos, true);
+    yPos = addDataRow('Data Subject Rights', 'Article 17 GDPR - Technical evidence support', yPos);
+    yPos = addDataRow('AI Transparency Req.', 'EU AI Act - Governance evidence support', yPos);
+    yPos = addDataRow('Audit Trail Status', 'Evidence trail recorded', yPos);
+    yPos = addDataRow('Legal Standing', 'For internal compliance review; not a legal determination', yPos, true);
     yPos += spacing.large;
 
     yPos = addSectionHeader('RISK ASSESSMENT & RECOMMENDATIONS', yPos);
     
     if (leakScore < 0.1) {
-      yPos = addDataRow('Risk Level', 'LOW - Excellent Suppression Achieved', yPos, true);
-      yPos = addDataRow('GDPR Compliance', '✓ Full Article 17 Compliance Verified', yPos);
+      yPos = addDataRow('Risk Level', 'LOW - Suppression targets met', yPos, true);
+      yPos = addDataRow('GDPR Compliance', 'Legal/compliance review recommended', yPos);
       yPos = addDataRow('Recommended Action', 'No further action required', yPos);
       yPos = addDataRow('Next Review', 'Quarterly monitoring recommended', yPos);
     } else if (leakScore < 0.3) {
       yPos = addDataRow('Risk Level', 'MEDIUM - Partial Suppression Detected', yPos, true);
-      yPos = addDataRow('GDPR Compliance', '⚠ Review Required - Potential Article 17 Gap', yPos);
+      yPos = addDataRow('GDPR Compliance', '⚠ Compliance review required', yPos);
       yPos = addDataRow('Recommended Action', 'Additional suppression cycles recommended', yPos);
       yPos = addDataRow('Next Review', 'Within 30 days', yPos);
     } else {
       yPos = addDataRow('Risk Level', 'HIGH - Significant Information Leakage', yPos, true);
-      yPos = addDataRow('GDPR Compliance', '✗ Non-Compliant - Article 17 Not Satisfied', yPos);
+      yPos = addDataRow('GDPR Compliance', '✗ Immediate legal/compliance review required', yPos);
       yPos = addDataRow('Recommended Action', 'Alternative unlearning methods required', yPos);
       yPos = addDataRow('Next Review', 'Immediate action required', yPos);
     }
@@ -208,7 +208,7 @@ export class PDFGenerator {
     yPos = addDataRow('Model Access Type', additionalData.unlearningType || 'Black-box API Access', yPos);
     yPos = addDataRow('Suppression Technique', 'Prompt-based Memory Suppression', yPos);
     yPos = addDataRow('Verification Method', 'Multi-Phase Adversarial Probing', yPos);
-    yPos = addDataRow('Proof Generation', 'zk-SNARK Circuit Compilation', yPos);
+    yPos = addDataRow('Proof Generation', 'Evidence hashing/signing (configuration-dependent)', yPos);
     yPos = addDataRow('Quality Assurance', 'Automated Statistical Analysis', yPos);
     yPos += spacing.large;
 
@@ -217,7 +217,7 @@ export class PDFGenerator {
     doc.setFontSize(8.5);
     doc.setFont('helvetica', 'normal');
     
-    const legalText = `This certificate constitutes cryptographic proof that the specified AI model has undergone unlearning procedures in accordance with applicable data protection regulations. The verification process employed zero-knowledge proofs to ensure privacy-preserving validation without exposing sensitive information. This document serves as admissible evidence of compliance efforts undertaken pursuant to GDPR Article 17 and related data subject rights.`;
+    const legalText = `This certificate summarizes an executed unlearning workflow and the evidence metadata captured by Forg3t. Proof boundaries, evidence completeness status, and deployment scope determine what can be claimed from this report. This document supports internal compliance and technical diligence workflows; legal interpretation remains with the deploying organization and its counsel.`;
     
     const splitText = doc.splitTextToSize(legalText, 170);
     doc.text(splitText, 18, yPos);
@@ -229,7 +229,7 @@ export class PDFGenerator {
     doc.setTextColor(colors.white[0], colors.white[1], colors.white[2]);
     doc.setFontSize(8.5);
     doc.setFont('helvetica', 'normal');
-    doc.text('© 2024 Forg3t Protocol | Cryptographically Verified AI Unlearning', 15, 285);
+    doc.text('© 2024 Forg3t Protocol | AI Unlearning Evidence Report', 15, 285);
     doc.text(`Document Hash: ${report.zk_proof_hash.slice(0, 32)}...`, 15, 291);
     
     doc.setTextColor(colors.white[0], colors.white[1], colors.white[2]);

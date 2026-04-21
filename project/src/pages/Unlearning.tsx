@@ -1,14 +1,26 @@
 import React, { useState } from 'react';
-import { Shield, Download, Play, X, CheckCircle, AlertCircle, FileText, Key, Database, Bot, Zap, Server, FolderOpen, Settings } from 'lucide-react';
+import { Shield, Download, Play, X, CheckCircle, AlertCircle, FileText, Key, Database, Bot, Zap, Server, FolderOpen, Settings, ExternalLink, Sparkles } from 'lucide-react';
 import { AssistantsSuppressionEngine, AssistantSuppressionResult } from '../lib/assistantsUnlearning';
-import { PDFGenerator } from '../lib/pdfGenerator';
 import { useAuth } from '../hooks/useAuth';
 import { supabase } from '../lib/supabase';
-import type { ComplianceReport } from '../types';
 import { LocalUnlearningClient, LocalUnlearningConfig } from '../local/runLocalClient';
+import { ZKProofGenerator } from '../lib/zkProof';
+import { StellarService } from '../lib/blockchain';
+import { BrandLockup } from '../components/BrandLockup';
+import { useSearchParams } from 'react-router-dom';
+
+interface SorobanEvidenceState {
+  status: 'idle' | 'running' | 'complete' | 'error';
+  proofHash?: string;
+  txHash?: string;
+  ipfsHash?: string | null;
+  error?: string;
+  simulated?: boolean;
+}
 
 export function Unlearning() {
   const { user } = useAuth();
+  const [searchParams] = useSearchParams();
   const [activeTab, setActiveTab] = useState<'blackbox' | 'whitebox'>('blackbox');
 
   const [apiKey, setApiKey] = useState('');
@@ -19,6 +31,8 @@ export function Unlearning() {
   const [targetText, setTargetText] = useState('');
   const [reason, setReason] = useState('');
   const [assistantResults, setAssistantResults] = useState<AssistantSuppressionResult | null>(null);
+  const [latestRequestId, setLatestRequestId] = useState<string | null>(null);
+  const [sorobanEvidence, setSorobanEvidence] = useState<SorobanEvidenceState>({ status: 'idle' });
 
   const [modelPaths, setModelPaths] = useState<string[]>(['']);
   const [whiteboxResults, setWhiteboxResults] = useState<any>(null);
@@ -33,6 +47,21 @@ export function Unlearning() {
   const [customServerUrl, setCustomServerUrl] = useState('');
   const [whiteboxProgress, setWhiteboxProgress] = useState({ percent: 0, message: '' });
   const [artifacts, setArtifacts] = useState<any[]>([]);
+  const sorobanSimulationEnabled =
+    import.meta.env.VITE_ALLOW_SIMULATED_ONCHAIN === 'true' && !import.meta.env.PROD;
+  const proofSimulationEnabled =
+    import.meta.env.VITE_ALLOW_SIMULATED_CRYPTO === 'true' && !import.meta.env.PROD;
+
+  React.useEffect(() => {
+    const requestedType = searchParams.get('type')?.toLowerCase();
+    if (requestedType === 'white-box' || requestedType === 'whitebox') {
+      setActiveTab('whitebox');
+      return;
+    }
+    if (requestedType === 'black-box' || requestedType === 'blackbox') {
+      setActiveTab('blackbox');
+    }
+  }, [searchParams]);
 
   React.useEffect(() => {
     const checkServerStatus = async () => {
@@ -92,6 +121,8 @@ export function Unlearning() {
 
     setBlackboxLoading(true);
     setAssistantResults(null);
+    setLatestRequestId(null);
+    setSorobanEvidence({ status: 'idle' });
     setBlackboxProgress({ percent: 0, message: 'Starting...' });
 
     try {
@@ -115,7 +146,8 @@ export function Unlearning() {
       setBlackboxProgress({ percent: 100, message: 'Suppression protocol completed!' });
 
       if (results.success && user) {
-        await saveAssistantSuppressionRequest(results);
+        const requestId = await saveAssistantSuppressionRequest(results);
+        setLatestRequestId(requestId);
       }
     } catch (error) {
       console.error('Unlearning process failed', error);
@@ -150,94 +182,64 @@ export function Unlearning() {
   const downloadPDF = async (currentAssistantResults: AssistantSuppressionResult) => {
     if (!currentAssistantResults || !user) return;
 
+    alert(
+      'Compliance certificate export is blocked until Soroban evidence is prepared with zk_proof_hash, stellar_tx_id, and ipfs_cid. Use the Soroban evidence panel below, then export from the dashboard when the evidence bundle is complete.'
+    );
+    return;
+  };
+
+  const uploadEvidenceManifest = async (payload: Record<string, unknown>) => {
+    const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
+    if (!supabaseUrl) {
+      return null;
+    }
+
+    const formData = new FormData();
+    formData.append(
+      'file',
+      new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' }),
+      `soroban-evidence-${Date.now()}.json`
+    );
+    formData.append('filename', `soroban-evidence-${Date.now()}.json`);
+
     try {
-      const report: ComplianceReport = {
-        user_id: user.id,
-        request_id: crypto.randomUUID(),
-        operation_type: 'AI Unlearning - Assistant Suppression',
-        timestamp: new Date().toISOString(),
-        zk_proof_hash: currentAssistantResults.assistantId || 'proof_' + Date.now().toString(16),
-        stellar_tx_id: '',
-        ipfs_cid: '',
-        jurisdiction: 'EU',
-        regulatory_tags: ['GDPR Article 17', 'Right to be Forgotten', 'AI Transparency']
-      };
+      const response = await fetch(`${supabaseUrl}/functions/v1/upload-to-ipfs`, {
+        method: 'POST',
+        body: formData
+      });
 
-      const additionalData = {
-        modelIdentifier: `OpenAI Assistant (${currentAssistantResults.assistantId})`,
-        leakScore: currentAssistantResults.leakScore || 0,
-        unlearningType: 'Assistant Instruction Suppression',
-        targetInfo: targetText || 'Confidential Information',
-        result: {
-          success: currentAssistantResults.success || false,
-          leakScore: currentAssistantResults.leakScore || 0,
-          totalTests: currentAssistantResults.totalTests || 0,
-          passedTests: currentAssistantResults.passedTests || 0,
-          failedTests: currentAssistantResults.failedTests || 0
-        }
-      };
-
-      const pdfBlob = PDFGenerator.generateComplianceCertificate(report, additionalData);
-
-      PDFGenerator.downloadPDF(pdfBlob, `forg3t-certificate-${Date.now()}.pdf`);
-
-      try {
-        const formData = new FormData();
-        formData.append('filename', `unlearning-certificate-${report.request_id.slice(0, 8)}.pdf`);
-        formData.append('file', pdfBlob);
-
-        const response = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/upload-to-ipfs`, {
-          method: 'POST',
-          body: formData,
-        });
-
-        if (response.ok) {
-          const { success, ipfsCid } = await response.json();
-
-          if (success && ipfsCid) {
-            if (supabase && 'from' in supabase && supabase.from) {
-              const updateResult = await supabase
-                .from('unlearning_requests')
-                .update({
-                  audit_trail: {
-                    ...currentAssistantResults,
-                    ipfs_hash: ipfsCid
-                  }
-                })
-                .eq('user_id', user.id)
-                .order('created_at', { ascending: false })
-                .limit(1);
-
-              if (updateResult && updateResult.error) {
-                console.error('Failed to update request with IPFS CID', updateResult.error);
-              }
-            }
-          }
-        }
-      } catch (ipfsError) {
-        console.warn('IPFS upload failed, but PDF was downloaded', ipfsError);
+      if (!response.ok) {
+        return null;
       }
 
+      const data = await response.json();
+      return data?.ipfsCid || null;
     } catch (error) {
-      console.error('PDF generation/upload failed', error);
+      console.warn('Failed to upload evidence manifest to IPFS:', error);
+      return null;
     }
   };
 
   const saveAssistantSuppressionRequest = async (results: AssistantSuppressionResult) => {
     try {
       if (supabase && 'from' in supabase && supabase.from) {
-        const { error } = await supabase
+        const evidenceStatus = results.success ? 'incomplete' : 'invalid';
+        const { data, error } = await supabase
           .from('unlearning_requests')
           .insert({
             user_id: user?.id,
             request_reason: reason || targetText || 'Assistant suppression request',
             status: results.success ? 'completed' : 'failed',
             processing_time_seconds: results.processingTime,
-            blockchain_tx_hash: "",
+            blockchain_tx_hash: null,
             audit_trail: {
+              evidence_status: evidenceStatus,
+              proof_boundary: 'control-plane only',
+              export_blocked: true,
+              simulated: false,
               leak_score: results.leakScore,
-              zk_proof: "",
-              ipfs_hash: "",
+              zk_proof: null,
+              ipfs_hash: null,
               assistant_id: results.assistantId,
               target_text: targetText,
               total_tests: results.totalTests,
@@ -246,14 +248,98 @@ export function Unlearning() {
               phase1_results: results.validationResults.phase1Results,
               phase2_results: results.validationResults.phase2Results
             }
-          });
+          })
+          .select('id')
+          .single();
 
         if (error) {
           console.error('Failed to save request:', error.message);
+          return null;
         }
+
+        return data?.id || null;
       }
     } catch (error) {
       console.error('Error saving request:', error);
+    }
+
+    return null;
+  };
+
+  const anchorOnSoroban = async (currentResults: AssistantSuppressionResult) => {
+    if (!currentResults || !user) return;
+
+    setSorobanEvidence({ status: 'running' });
+
+    try {
+      const proof = await ZKProofGenerator.generateSuppressionProof({
+        targetString: targetText || 'Suppressed knowledge target',
+        leakScore: currentResults.leakScore,
+        adversarialResults: currentResults.validationResults.phase2Results
+      });
+
+      const stellar = new StellarService();
+      const txHash = await stellar.commitForgetProof(proof.proofHash, user.id, Date.now());
+
+      const ipfsHash = await uploadEvidenceManifest({
+        request_id: latestRequestId,
+        assistant_id: currentResults.assistantId,
+        target_text: targetText,
+        reason: reason || null,
+        leak_score: currentResults.leakScore,
+        total_tests: currentResults.totalTests,
+        passed_tests: currentResults.passedTests,
+        failed_tests: currentResults.failedTests,
+        zk_proof_hash: proof.proofHash,
+        stellar_tx_id: txHash,
+        generated_at: new Date().toISOString(),
+        proof_boundary: proof.proofBoundary || 'suppression verified'
+      });
+
+      const evidenceStatus = ipfsHash ? 'complete' : 'incomplete';
+
+      if (supabase && 'from' in supabase && supabase.from && latestRequestId) {
+        const { error } = await supabase
+          .from('unlearning_requests')
+          .update({
+            blockchain_tx_hash: txHash,
+            audit_trail: {
+              evidence_status: evidenceStatus,
+              proof_boundary: proof.proofBoundary || 'suppression verified',
+              export_blocked: !ipfsHash,
+              simulated: Boolean(proof.simulated),
+              leak_score: currentResults.leakScore,
+              zk_proof: proof.proofHash,
+              ipfs_hash: ipfsHash,
+              assistant_id: currentResults.assistantId,
+              target_text: targetText,
+              total_tests: currentResults.totalTests,
+              passed_tests: currentResults.passedTests,
+              failed_tests: currentResults.failedTests,
+              phase1_results: currentResults.validationResults.phase1Results,
+              phase2_results: currentResults.validationResults.phase2Results
+            }
+          })
+          .eq('id', latestRequestId);
+
+        if (error) {
+          console.warn('Failed to persist Soroban evidence metadata:', error.message);
+        }
+      }
+
+      setSorobanEvidence({
+        status: 'complete',
+        proofHash: proof.proofHash,
+        txHash,
+        ipfsHash,
+        simulated: Boolean(proof.simulated)
+      });
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : 'Unknown Soroban evidence error';
+      setSorobanEvidence({
+        status: 'error',
+        error: errorMessage
+      });
     }
   };
 
@@ -384,109 +470,112 @@ export function Unlearning() {
     }
   };
 
-  const handleWhiteboxUnlearning = async () => {
-    const validModelPaths = modelPaths.filter(path => path.trim() !== '');
-    if (validModelPaths.length === 0) {
-      alert('Please enter at least one model path');
-      return;
-    }
-
-    setWhiteboxLoading(true);
-
-    setTimeout(() => {
-      setWhiteboxResults({
-        success: true,
-        originalAccuracy: 0.94,
-        newAccuracy: 0.91,
-        targetDataRemoved: 1247,
-        processingTime: 45.2,
-        retrainRequired: true
-      });
-      setWhiteboxLoading(false);
-    }, 3000);
-  };
-
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-900 via-blue-900 to-slate-900">
+    <div className="min-h-screen bg-[radial-gradient(circle_at_top,_rgba(186,230,253,0.26),_transparent_38%),linear-gradient(180deg,_#f8fbff_0%,_#eef6ff_42%,_#ffffff_100%)]">
       <div className="container mx-auto px-4 py-8">
-        {/* Header */}
-        <div className="text-center mb-12">
+        <div className="mb-10">
+          <BrandLockup />
         </div>
 
-        {/* Tab Navigation */}
-        <div className="flex justify-center mb-8">
-          <div className="bg-gray-800/50 backdrop-blur-sm rounded-xl p-1 border border-gray-700 flex gap-1">
+        <div className="mb-8 flex justify-center">
+          <div className="inline-flex rounded-xl border border-slate-200 bg-white p-1 shadow-sm">
             <button
               onClick={() => setActiveTab('blackbox')}
-              className={`px-8 py-3 rounded-lg font-semibold transition-all duration-300 flex items-center ${activeTab === 'blackbox'
-                  ? 'bg-[#60a5fa] text-white shadow-lg shadow-[#60a5fa]/30'
-                  : 'text-gray-400 hover:text-white hover:bg-gray-700/50'
-                }`}
+              className={`flex items-center rounded-lg px-6 py-3 text-sm font-semibold transition-all ${
+                activeTab === 'blackbox'
+                  ? 'bg-slate-950 text-white shadow-sm'
+                  : 'text-slate-600 hover:bg-slate-100 hover:text-slate-950'
+              }`}
             >
-              <Shield className="w-5 h-5 mr-2" />
-              Black-Box
+              <Shield className="mr-2 h-4 w-4" />
+              Black-box Suppression
             </button>
             <button
               onClick={() => setActiveTab('whitebox')}
-              className={`px-8 py-3 rounded-lg font-semibold transition-all duration-300 flex items-center ${activeTab === 'whitebox'
-                  ? 'bg-[#60a5fa] text-white shadow-lg shadow-[#60a5fa]/30'
-                  : 'text-gray-400 hover:text-white hover:bg-gray-700/50'
-                }`}
+              className={`flex items-center rounded-lg px-6 py-3 text-sm font-semibold transition-all ${
+                activeTab === 'whitebox'
+                  ? 'bg-slate-950 text-white shadow-sm'
+                  : 'text-slate-600 hover:bg-slate-100 hover:text-slate-950'
+              }`}
             >
-              <Database className="w-5 h-5 mr-2" />
-              White-Box
+              <Database className="mr-2 h-4 w-4" />
+              White-box Unlearning
             </button>
           </div>
         </div>
 
-        {/* Black-Box Unlearning */}
         {activeTab === 'blackbox' && (
-          <div className="max-w-4xl mx-auto">
-            <div className="bg-gray-800/40 backdrop-blur-sm rounded-2xl border border-gray-700 p-8 shadow-2xl">
-              <div className="flex items-center mb-6">
-                <Shield className="w-8 h-8 text-[#60a5fa] mr-3" />
-                <h2 className="text-3xl font-bold text-white">Black-Box Unlearning</h2>
+          <div className="mx-auto max-w-4xl">
+            <div className="rounded-2xl border border-slate-200 bg-white p-8 shadow-sm">
+              <div className="mb-6 flex items-center">
+                <Shield className="mr-3 h-8 w-8 text-sky-600" />
+                <h2 className="text-3xl font-bold text-slate-950">Black-box Suppression</h2>
               </div>
 
-              <p className="text-gray-300 mb-8 text-lg leading-relaxed">
+              <p className="mb-8 text-lg leading-relaxed text-slate-600">
                 Inject suppression protocols into OpenAI Assistants without accessing model weights.
-                This method modifies the assistant's instructions to refuse specific information requests.
+                This method updates the assistant instructions and validates the response behavior afterward.
               </p>
 
-              {/* Setup Instructions */}
-              <div className="bg-blue-900/20 border border-blue-500/50 rounded-xl p-6 mb-8">
-                <h3 className="text-xl font-bold text-white mb-4 flex items-center">
-                  Assistant Setup Instructions
-                </h3>
-                <ol className="space-y-3 text-blue-300">
+              <div className="mb-8 rounded-xl border border-slate-200 bg-slate-50 p-6">
+                <h3 className="mb-4 text-xl font-bold text-slate-950">Assistant Setup Instructions</h3>
+                <ol className="space-y-3 text-slate-600">
                   <li className="flex items-start space-x-3">
-                    <span className="bg-blue-500 text-white rounded-full w-6 h-6 flex items-center justify-center text-sm font-bold mt-0.5">1</span>
+                    <span className="mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-slate-950 text-sm font-bold text-white">1</span>
                     <span>
-                      Go to <a href="https://platform.openai.com/assistants" target="_blank" className="text-blue-200 underline hover:text-blue-100">
+                      Go to{' '}
+                      <a
+                        href="https://platform.openai.com/assistants"
+                        target="_blank"
+                        rel="noreferrer"
+                        className="text-sky-700 underline hover:text-sky-800"
+                      >
                         OpenAI Assistants
-                      </a> and create a new Assistant
+                      </a>{' '}
+                      and open or create the Assistant you want to update.
                     </span>
                   </li>
                   <li className="flex items-start space-x-3">
-                    <span className="bg-blue-500 text-white rounded-full w-6 h-6 flex items-center justify-center text-sm font-bold mt-0.5">2</span>
-                    <span>Copy the Assistant ID (starts with "asst_")</span>
+                    <span className="mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-slate-950 text-sm font-bold text-white">2</span>
+                    <span>Copy the Assistant ID that starts with <code className="rounded bg-white px-1.5 py-0.5 text-slate-900">asst_</code>.</span>
                   </li>
                   <li className="flex items-start space-x-3">
-                    <span className="bg-blue-500 text-white rounded-full w-6 h-6 flex items-center justify-center text-sm font-bold mt-0.5">3</span>
-                    <span>Get your API key from <a href="https://platform.openai.com/api-keys" target="_blank" className="text-blue-200 underline hover:text-blue-100">OpenAI API Keys</a></span>
+                    <span className="mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-slate-950 text-sm font-bold text-white">3</span>
+                    <span>
+                      Generate an API key from{' '}
+                      <a
+                        href="https://platform.openai.com/api-keys"
+                        target="_blank"
+                        rel="noreferrer"
+                        className="text-sky-700 underline hover:text-sky-800"
+                      >
+                        OpenAI API Keys
+                      </a>{' '}
+                      with permissions required to update Assistants.
+                    </span>
                   </li>
                   <li className="flex items-start space-x-3">
-                    <span className="bg-blue-500 text-white rounded-full w-6 h-6 flex items-center justify-center text-sm font-bold mt-0.5">4</span>
-                    <span>Enter both below to inject suppression protocol</span>
+                    <span className="mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-slate-950 text-sm font-bold text-white">4</span>
+                    <span>Enter the API key, Assistant ID, and target text below to inject the suppression protocol.</span>
                   </li>
                 </ol>
+
+                <div className="mt-6 border-t border-slate-200 pt-4">
+                  <h4 className="mb-3 font-bold text-slate-950">How to Use</h4>
+                  <ol className="list-inside list-decimal space-y-2 text-slate-600">
+                    <li>First, validate the assistant on a neutral prompt so you have a baseline.</li>
+                    <li>Then click <strong>Inject Suppression Protocol</strong> to apply the instruction-layer update.</li>
+                    <li>After the run completes, anchor Soroban evidence and wait for the proof bundle to be ready.</li>
+                    <li>Retest the original target and confirm the assistant now refuses that content.</li>
+                    <li>Ask unrelated prompts to confirm the assistant still behaves normally outside the target scope.</li>
+                  </ol>
+                </div>
               </div>
 
               <div className="space-y-6">
-                {/* API Key Input */}
                 <div>
-                  <label className="block text-lg font-semibold text-white mb-3">
-                    <Key className="w-5 h-5 inline mr-2" />
+                  <label className="mb-3 block text-lg font-semibold text-slate-950">
+                    <Key className="mr-2 inline h-5 w-5" />
                     OpenAI API Key
                   </label>
                   <input
@@ -494,14 +583,13 @@ export function Unlearning() {
                     value={apiKey}
                     onChange={(e) => setApiKey(e.target.value)}
                     placeholder="sk-..."
-                    className="w-full px-4 py-3 bg-gray-700/50 border border-gray-600 rounded-xl text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-[#60a5fa] focus:border-transparent transition-all duration-300"
+                    className="w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-slate-950 placeholder-slate-400 transition-shadow focus:border-transparent focus:outline-none focus:ring-2 focus:ring-sky-500"
                   />
                 </div>
 
-                {/* Assistant ID Input */}
                 <div>
-                  <label className="block text-lg font-semibold text-white mb-3">
-                    <Bot className="w-5 h-5 inline mr-2" />
+                  <label className="mb-3 block text-lg font-semibold text-slate-950">
+                    <Bot className="mr-2 inline h-5 w-5" />
                     Assistant ID
                   </label>
                   <input
@@ -509,178 +597,283 @@ export function Unlearning() {
                     value={assistantId}
                     onChange={(e) => setAssistantId(e.target.value)}
                     placeholder="asst_..."
-                    className="w-full px-4 py-3 bg-gray-700/50 border border-gray-600 rounded-xl text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-[#60a5fa] focus:border-transparent transition-all duration-300"
+                    className="w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-slate-950 placeholder-slate-400 transition-shadow focus:border-transparent focus:outline-none focus:ring-2 focus:ring-sky-500"
                   />
                 </div>
 
-                {/* Target Information Display */}
                 <div>
-                  <label className="block text-lg font-semibold text-white mb-3">
-                    <FileText className="w-5 h-5 inline mr-2" />
+                  <label className="mb-3 block text-lg font-semibold text-slate-950">
+                    <FileText className="mr-2 inline h-5 w-5" />
                     Target Text to Suppress
                   </label>
                   <input
                     type="text"
                     value={targetText}
                     onChange={(e) => setTargetText(e.target.value)}
-                    placeholder="Enter the text/phrase you want to suppress..."
-                    className="w-full px-4 py-3 bg-gray-700/50 border border-gray-600 rounded-xl text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-[#60a5fa] focus:border-transparent transition-all duration-300"
+                    placeholder="Enter the text or phrase you want to suppress..."
+                    className="w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-slate-950 placeholder-slate-400 transition-shadow focus:border-transparent focus:outline-none focus:ring-2 focus:ring-sky-500"
                   />
-                  <p className="text-gray-400 mt-2 text-sm">
-                    The Assistant will be programmed to refuse all requests about this specific information.
+                  <p className="mt-2 text-sm text-slate-500">
+                    The assistant will be instructed to refuse responses associated with this target.
                   </p>
                 </div>
 
-                {/* Reason Input */}
                 <div>
-                  <label className="block text-lg font-semibold text-white mb-3">
-                    <FileText className="w-5 h-5 inline mr-2" />
+                  <label className="mb-3 block text-lg font-semibold text-slate-950">
+                    <FileText className="mr-2 inline h-5 w-5" />
                     Reason for Suppression
                   </label>
                   <textarea
                     value={reason}
                     onChange={(e) => setReason(e.target.value)}
-                    placeholder="Enter the reason for this suppression request (optional)..."
+                    placeholder="Enter the compliance or operational reason (optional)..."
                     rows={3}
-                    className="w-full px-4 py-3 bg-gray-700/50 border border-gray-600 rounded-xl text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-[#60a5fa] focus:border-transparent transition-all duration-300 resize-none"
+                    className="w-full resize-none rounded-xl border border-slate-200 bg-white px-4 py-3 text-slate-950 placeholder-slate-400 transition-shadow focus:border-transparent focus:outline-none focus:ring-2 focus:ring-sky-500"
                   />
                 </div>
 
-                {/* Action Buttons */}
                 <div className="flex gap-4">
                   {!blackboxLoading ? (
                     <button
                       onClick={handleBlackboxUnlearning}
-                      className="flex items-center px-8 py-4 bg-gradient-to-r from-[#60a5fa] to-[#60a5fa]/90 text-white font-semibold rounded-xl hover:from-[#60a5fa]/90 hover:to-[#60a5fa]/80 transition-all duration-300 shadow-lg shadow-[#60a5fa]/30 hover:shadow-[#60a5fa]/50 hover:scale-105"
+                      className="inline-flex items-center rounded-xl bg-slate-950 px-8 py-4 font-semibold text-white transition-colors hover:bg-slate-800"
                     >
-                      <Zap className="w-5 h-5 mr-2" />
+                      <Zap className="mr-2 h-5 w-5" />
                       Inject Suppression Protocol
                     </button>
                   ) : (
                     <button
                       onClick={cancelBlackboxUnlearning}
-                      className="flex items-center px-8 py-4 bg-gradient-to-r from-red-600 to-red-700 text-white font-semibold rounded-xl hover:from-red-700 hover:to-red-800 transition-all duration-300 shadow-lg shadow-red-600/30"
+                      className="inline-flex items-center rounded-xl bg-rose-600 px-8 py-4 font-semibold text-white transition-colors hover:bg-rose-700"
                     >
-                      <X className="w-5 h-5 mr-2" />
+                      <X className="mr-2 h-5 w-5" />
                       Cancel Process
                     </button>
                   )}
                 </div>
 
-                {/* Progress Display */}
                 {blackboxLoading && (
-                  <div className="bg-gray-700/30 rounded-xl p-6 border border-gray-600">
-                    <div className="flex items-center justify-between mb-4">
-                      <span className="text-white font-semibold">Processing...</span>
-                      <span className="text-purple-400 font-bold">{blackboxProgress.percent}%</span>
+                  <div className="rounded-xl border border-slate-200 bg-slate-50 p-6">
+                    <div className="mb-4 flex items-center justify-between">
+                      <span className="font-semibold text-slate-950">Processing...</span>
+                      <span className="font-bold text-slate-950">{blackboxProgress.percent}%</span>
                     </div>
-                    <div className="w-full bg-gray-700 rounded-full h-3 mb-4">
+                    <div className="mb-4 h-3 w-full rounded-full bg-slate-200">
                       <div
-                        className="bg-gradient-to-r from-[#60a5fa] to-[#60a5fa]/90 h-3 rounded-full transition-all duration-500"
+                        className="h-3 rounded-full bg-slate-900 transition-all duration-500"
                         style={{ width: `${blackboxProgress.percent}%` }}
                       />
                     </div>
-                    <p className="text-gray-300">{blackboxProgress.message}</p>
+                    <p className="text-slate-600">{blackboxProgress.message}</p>
                   </div>
                 )}
 
-                {/* Assistant API Results Display */}
                 {assistantResults && (
-                  <div className="bg-gray-700/30 rounded-xl p-6 border border-gray-600">
-                    <div className="flex items-center justify-between mb-6">
-                      <h3 className="text-2xl font-bold text-white">Assistant Suppression Results</h3>
-                      <div className="flex gap-2">
-                        <button
-                          onClick={() => assistantResults && downloadPDF(assistantResults)}
-                          className="flex items-center px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
-                        >
-                          <Download className="w-4 h-4 mr-2" />
-                          Download PDF
-                        </button>
-                      </div>
+                  <div className="mt-8 rounded-2xl border border-slate-200 bg-slate-50 p-6">
+                    <div className="mb-8 flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+                      <h3 className="text-3xl font-bold text-slate-950">Assistant Suppression Results</h3>
+                      <button
+                        onClick={() => assistantResults && downloadPDF(assistantResults)}
+                        className="inline-flex items-center rounded-lg border border-slate-200 bg-white px-5 py-2.5 font-medium text-slate-700 transition-colors hover:bg-slate-100"
+                      >
+                        <Download className="mr-2 h-4 w-4" />
+                        Download Certificate
+                      </button>
                     </div>
 
                     {assistantResults.success ? (
-                      <div className="bg-green-900/30 border border-green-500/50 rounded-xl p-4 mb-6">
-                        <div className="flex items-center mb-2">
-                          <CheckCircle className="w-6 h-6 text-green-400 mr-3" />
-                          <span className="text-green-400 font-bold text-lg">Suppression Protocol Complete</span>
+                      <div className="mb-8 rounded-xl border-2 border-emerald-200 bg-emerald-50 p-5">
+                        <div className="flex items-center">
+                          <CheckCircle className="mr-3 h-7 w-7 text-emerald-600" />
+                          <span className="text-xl font-bold text-emerald-800">Suppression Protocol Complete</span>
                         </div>
                       </div>
                     ) : (
-                      <div className="bg-red-900/30 border border-red-500/50 rounded-xl p-4 mb-6">
-                        <div className="flex items-center mb-2">
-                          <AlertCircle className="w-6 h-6 text-red-400 mr-3" />
-                          <span className="text-red-400 font-bold text-lg">Suppression Failed</span>
+                      <div className="mb-8 rounded-xl border-2 border-rose-200 bg-rose-50 p-5">
+                        <div className="mb-2 flex items-center">
+                          <AlertCircle className="mr-3 h-7 w-7 text-rose-600" />
+                          <span className="text-xl font-bold text-rose-800">Suppression Failed</span>
                         </div>
                         {assistantResults.error && (
-                          <p className="text-red-300">{assistantResults.error}</p>
+                          <p className="text-rose-700">{assistantResults.error}</p>
                         )}
                       </div>
                     )}
 
-                    {/* Assistant Metrics */}
-                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
-                      <div className="bg-gray-800/50 rounded-xl p-4 border border-gray-600">
-                        <div className="flex items-center mb-2">
-                          <CheckCircle className="w-5 h-5 text-green-400 mr-2" />
-                          <span className="text-white font-semibold">Suppression Rate</span>
+                    {assistantResults.success && (
+                      <div className="mb-8 rounded-xl border border-slate-200 bg-white p-6">
+                        <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
+                          <div>
+                            <div className="flex items-center">
+                              <Sparkles className="mr-2 h-5 w-5 text-sky-600" />
+                              <h4 className="text-lg font-semibold text-slate-950">Soroban Evidence Anchoring</h4>
+                            </div>
+                            <p className="mt-2 max-w-2xl text-sm leading-6 text-slate-600">
+                              Prepare immutable proof metadata for Stellar transaction tracking and IPFS continuity before certificate export is enabled.
+                            </p>
+                          </div>
+
+                          <button
+                            onClick={() => anchorOnSoroban(assistantResults)}
+                            disabled={sorobanEvidence.status === 'running'}
+                            className="inline-flex items-center rounded-lg bg-slate-950 px-6 py-3 font-semibold text-white transition-colors hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-60"
+                          >
+                            {sorobanEvidence.status === 'running' ? (
+                              <>
+                                <div className="mr-2 h-4 w-4 animate-spin rounded-full border-b-2 border-white" />
+                                Anchoring on Soroban...
+                              </>
+                            ) : (
+                              <>
+                                <Shield className="mr-2 h-4 w-4" />
+                                Anchor on Soroban
+                              </>
+                            )}
+                          </button>
                         </div>
-                        <p className="text-2xl font-bold text-[#60a5fa]">
+
+                        <div className="mt-4 grid gap-4 md:grid-cols-2">
+                          <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
+                            <p className="text-xs font-semibold uppercase tracking-[0.2em] text-sky-700">Proof path</p>
+                            <p className="mt-2 text-sm text-slate-600">
+                              {proofSimulationEnabled ? 'Simulation enabled for local proof generation.' : 'A prover backend is required in this environment.'}
+                            </p>
+                          </div>
+                          <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
+                            <p className="text-xs font-semibold uppercase tracking-[0.2em] text-sky-700">On-chain path</p>
+                            <p className="mt-2 text-sm text-slate-600">
+                              {sorobanSimulationEnabled ? 'Soroban test flow is enabled.' : 'A signed transaction path is required before commit.'}
+                            </p>
+                          </div>
+                        </div>
+
+                        {sorobanEvidence.status === 'complete' && (
+                          <div className="mt-5 grid gap-3 md:grid-cols-3">
+                            <div className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-3">
+                              <p className="text-xs font-semibold uppercase tracking-[0.2em] text-sky-700">zk_proof_hash</p>
+                              <p className="mt-2 break-all text-sm text-slate-900">{sorobanEvidence.proofHash}</p>
+                            </div>
+                            <div className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-3">
+                              <p className="text-xs font-semibold uppercase tracking-[0.2em] text-sky-700">stellar_tx_id</p>
+                              {sorobanEvidence.txHash ? (
+                                <a
+                                  href={`https://stellar.expert/explorer/testnet/tx/${sorobanEvidence.txHash}`}
+                                  target="_blank"
+                                  rel="noreferrer"
+                                  className="mt-2 inline-flex items-center break-all text-sm text-slate-900 hover:text-sky-700"
+                                >
+                                  {sorobanEvidence.txHash}
+                                  <ExternalLink className="ml-2 h-4 w-4 shrink-0" />
+                                </a>
+                              ) : (
+                                <p className="mt-2 text-sm text-slate-500">Pending</p>
+                              )}
+                            </div>
+                            <div className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-3">
+                              <p className="text-xs font-semibold uppercase tracking-[0.2em] text-sky-700">ipfs_cid</p>
+                              <p className="mt-2 break-all text-sm text-slate-900">
+                                {sorobanEvidence.ipfsHash || 'IPFS upload unavailable in this environment'}
+                              </p>
+                              {sorobanEvidence.simulated && (
+                                <p className="mt-2 text-xs text-amber-700">Simulation mode was used for proof or on-chain generation.</p>
+                              )}
+                            </div>
+                          </div>
+                        )}
+
+                        {sorobanEvidence.status === 'error' && (
+                          <div className="mt-4 rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">
+                            {sorobanEvidence.error}
+                          </div>
+                        )}
+                      </div>
+                    )}
+
+                    <div className="mb-8 grid grid-cols-1 gap-5 md:grid-cols-2 lg:grid-cols-4">
+                      <div className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
+                        <div className="mb-3 flex items-center">
+                          <div className="rounded-lg bg-emerald-100 p-2">
+                            <CheckCircle className="h-5 w-5 text-emerald-600" />
+                          </div>
+                          <span className="ml-3 font-medium text-slate-600">Suppression Rate</span>
+                        </div>
+                        <p className="text-3xl font-bold text-emerald-600">
                           {(((assistantResults.totalTests - assistantResults.failedTests) / assistantResults.totalTests) * 100).toFixed(1)}%
                         </p>
                       </div>
 
-                      <div className="bg-gray-800/50 rounded-xl p-4 border border-gray-600">
-                        <div className="text-white font-semibold mb-2">Leak Score</div>
-                        <p className="text-2xl font-bold text-yellow-400">
+                      <div className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
+                        <div className="mb-3 flex items-center">
+                          <div className="rounded-lg bg-amber-100 p-2">
+                            <AlertCircle className="h-5 w-5 text-amber-600" />
+                          </div>
+                          <span className="ml-3 font-medium text-slate-600">Leak Score</span>
+                        </div>
+                        <p className="text-3xl font-bold text-amber-600">
                           {(assistantResults.leakScore * 100).toFixed(1)}%
                         </p>
                       </div>
 
-                      <div className="bg-gray-800/50 rounded-xl p-4 border border-gray-600">
-                        <div className="text-white font-semibold mb-2">Tests Passed</div>
-                        <p className="text-2xl font-bold text-green-400">
+                      <div className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
+                        <div className="mb-3 flex items-center">
+                          <div className="rounded-lg bg-sky-100 p-2">
+                            <CheckCircle className="h-5 w-5 text-sky-600" />
+                          </div>
+                          <span className="ml-3 font-medium text-slate-600">Tests Passed</span>
+                        </div>
+                        <p className="text-3xl font-bold text-sky-600">
                           {assistantResults.passedTests}/{assistantResults.totalTests}
                         </p>
                       </div>
 
-                      <div className="bg-gray-800/50 rounded-xl p-4 border border-gray-600">
-                        <div className="text-white font-semibold mb-2">Processing Time</div>
-                        <p className="text-2xl font-bold text-blue-400">
-                          {assistantResults.processingTime}s
-                        </p>
+                      <div className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
+                        <div className="mb-3 flex items-center">
+                          <div className="rounded-lg bg-indigo-100 p-2">
+                            <Zap className="h-5 w-5 text-indigo-600" />
+                          </div>
+                          <span className="ml-3 font-medium text-slate-600">Processing Time</span>
+                        </div>
+                        <p className="text-3xl font-bold text-indigo-600">{assistantResults.processingTime}s</p>
                       </div>
                     </div>
 
-                    {/* Phase Results */}
-                    <div className="grid md:grid-cols-2 gap-6">
-                      <div className="bg-gray-800/50 rounded-xl p-4 border border-gray-600">
-                        <h4 className="text-lg font-bold text-white mb-3">Phase 1: Reinforcement</h4>
-                        <div className="space-y-2">
-                          <div className="flex justify-between">
-                            <span className="text-gray-300">Total Prompts:</span>
-                            <span className="text-white font-semibold">{assistantResults.validationResults.phase1Results.length}</span>
+                    <div className="grid gap-6 md:grid-cols-2">
+                      <div className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
+                        <h4 className="mb-4 flex items-center text-xl font-bold text-slate-950">
+                          <div className="mr-3 flex h-8 w-8 items-center justify-center rounded-lg bg-sky-100">
+                            <span className="font-bold text-sky-600">1</span>
                           </div>
-                          <div className="flex justify-between">
-                            <span className="text-gray-300">Suppressed:</span>
-                            <span className="text-green-400 font-semibold">
+                          Phase 1: Reinforcement
+                        </h4>
+                        <div className="space-y-3">
+                          <div className="flex items-center justify-between border-b border-slate-100 py-2">
+                            <span className="font-medium text-slate-600">Total Prompts</span>
+                            <span className="text-lg font-bold text-slate-950">{assistantResults.validationResults.phase1Results.length}</span>
+                          </div>
+                          <div className="flex items-center justify-between py-2">
+                            <span className="font-medium text-slate-600">Suppressed</span>
+                            <span className="text-lg font-bold text-emerald-600">
                               {assistantResults.validationResults.phase1Results.filter(r => r.suppressionActive).length}
                             </span>
                           </div>
                         </div>
                       </div>
 
-                      <div className="bg-gray-800/50 rounded-xl p-4 border border-gray-600">
-                        <h4 className="text-lg font-bold text-white mb-3">Phase 2: Validation</h4>
-                        <div className="space-y-2">
-                          <div className="flex justify-between">
-                            <span className="text-gray-300">Total Tests:</span>
-                            <span className="text-white font-semibold">{assistantResults.validationResults.phase2Results.length}</span>
+                      <div className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
+                        <h4 className="mb-4 flex items-center text-xl font-bold text-slate-950">
+                          <div className="mr-3 flex h-8 w-8 items-center justify-center rounded-lg bg-indigo-100">
+                            <span className="font-bold text-indigo-600">2</span>
                           </div>
-                          <div className="flex justify-between">
-                            <span className="text-gray-300">Suppressed:</span>
-                            <span className="text-green-400 font-semibold">
+                          Phase 2: Validation
+                        </h4>
+                        <div className="space-y-3">
+                          <div className="flex items-center justify-between border-b border-slate-100 py-2">
+                            <span className="font-medium text-slate-600">Total Tests</span>
+                            <span className="text-lg font-bold text-slate-950">{assistantResults.validationResults.phase2Results.length}</span>
+                          </div>
+                          <div className="flex items-center justify-between py-2">
+                            <span className="font-medium text-slate-600">Suppressed</span>
+                            <span className="text-lg font-bold text-emerald-600">
                               {assistantResults.validationResults.phase2Results.filter(r => r.suppressionActive).length}
                             </span>
                           </div>
@@ -694,98 +887,67 @@ export function Unlearning() {
           </div>
         )}
 
-        {/* White-Box Unlearning */}
         {activeTab === 'whitebox' && (
-          <div className="max-w-4xl mx-auto">
-            <div className="bg-gray-800/40 backdrop-blur-sm rounded-2xl border border-gray-700 p-8 shadow-2xl">
-              <div className="flex items-center mb-6">
-                <Database className="w-8 h-8 text-[#60a5fa] mr-3" />
-                <h2 className="text-3xl font-bold text-white">White-Box Unlearning</h2>
+          <div className="mx-auto max-w-4xl">
+            <div className="rounded-2xl border border-slate-200 bg-white p-8 shadow-sm">
+              <div className="mb-6 flex items-center">
+                <Database className="mr-3 h-8 w-8 text-sky-600" />
+                <h2 className="text-3xl font-bold text-slate-950">White-box Unlearning</h2>
               </div>
 
-              <p className="text-gray-300 mb-8 text-lg leading-relaxed">
-                Direct model weight manipulation for precise data removal. This method requires access to
-                the model's internal parameters and provides the most accurate unlearning results.
+              <p className="mb-8 text-lg leading-relaxed text-slate-600">
+                Use the local runtime for direct model adaptation. This path requires access to model files,
+                output storage, and a reachable local server.
               </p>
 
-              <div className="space-y-6">
-                {/* Server Status */}
-                <div className={`p-4 rounded-lg ${localServerOnline ? 'bg-green-900/30 border border-green-500/50' : 'bg-red-900/30 border border-red-500/50'}`}>
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center">
-                      <Server className={`w-5 h-5 mr-2 ${localServerOnline ? 'text-green-400' : 'text-red-400'}`} />
-                      <span className={`font-semibold ${localServerOnline ? 'text-green-400' : 'text-red-400'}`}>
-                        Local Server Status: {localServerOnline ? 'Online' : 'Offline'}
-                      </span>
+              <div
+                className={`mb-8 rounded-xl border p-6 ${
+                  localServerOnline ? 'border-emerald-200 bg-emerald-50' : 'border-amber-200 bg-amber-50'
+                }`}
+              >
+                <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+                  <div className="flex items-start">
+                    <Server className={`mr-3 mt-0.5 h-5 w-5 ${localServerOnline ? 'text-emerald-600' : 'text-amber-600'}`} />
+                    <div>
+                      <h3 className={`text-lg font-semibold ${localServerOnline ? 'text-emerald-900' : 'text-amber-900'}`}>
+                        Local Runtime Status
+                      </h3>
+                      <p className={`mt-1 text-sm ${localServerOnline ? 'text-emerald-800' : 'text-amber-800'}`}>
+                        {localServerOnline ? 'Server is online and ready for model-side execution.' : 'Server is offline. Start the local runtime before launching a job.'}
+                      </p>
                     </div>
-                    <button
-                      onClick={manuallyCheckServerStatus}
-                      className="px-3 py-1 bg-gray-700 text-white rounded-lg hover:bg-gray-600 transition-colors text-sm"
-                    >
-                      Check Now
-                    </button>
                   </div>
-                  {!localServerOnline && (
-                    <div className="mt-2">
-                      <p className="text-gray-300 text-sm">
-                        Please start the local unlearning server to use this feature.
-                      </p>
-                      <p className="text-gray-300 text-sm mt-1">
-                        To start the server:
-                      </p>
-                      <ol className="text-gray-300 text-sm mt-1 list-decimal list-inside space-y-1">
-                        <li>Open a new terminal/command prompt</li>
-                        <li>Navigate to the local-server-package directory:
-                          <pre className="bg-gray-800 p-2 rounded mt-1 text-xs">
-                            cd "c:\Users\Alvinn\Desktop\Forg3t PROJE DOSYALARI - KOD\Forg3t Protocol MVP stellar\project\local-server-package"
-                          </pre>
-                        </li>
-                        <li>Install required dependencies (if not already installed):
-                          <pre className="bg-gray-800 p-2 rounded mt-1 text-xs">
-                            pip install -r requirements.txt
-                          </pre>
-                        </li>
-                        <li>Run the server:
-                          <pre className="bg-gray-800 p-2 rounded mt-1 text-xs">
-                            python server.py
-                          </pre>
-                        </li>
-                        <li>The server should start on port 8787</li>
-                        <li>Wait for the message "Starting server on port 8787"</li>
-                        <li>Click "Check Now" to verify the connection</li>
-                      </ol>
-                      <p className="text-gray-300 text-sm mt-2">
-                        <strong>Common issues:</strong>
-                      </p>
-                      <ul className="text-gray-300 text-sm list-disc list-inside space-y-1">
-                        <li>Make sure Python is installed and accessible from your PATH</li>
-                        <li>If you get module import errors, install the missing packages with pip</li>
-                        <li>Make sure no other application is using port 8787</li>
-                      </ul>
-                    </div>
-                  )}
+                  <button
+                    onClick={manuallyCheckServerStatus}
+                    className="rounded-lg border border-slate-200 bg-white px-4 py-2 text-sm font-medium text-slate-700 transition-colors hover:bg-slate-100"
+                  >
+                    Check Now
+                  </button>
                 </div>
+                <p className={`mt-4 text-sm leading-6 ${localServerOnline ? 'text-emerald-800' : 'text-amber-800'}`}>
+                  Use a clean model path, a dedicated output directory, and a stable target phrase for reproducible white-box runs.
+                </p>
+              </div>
 
-                {/* Custom Server URL */}
+              <div className="space-y-6">
                 <div>
-                  <label className="block text-lg font-semibold text-white mb-3">
-                    <Settings className="w-5 h-5 inline mr-2" />
+                  <label className="mb-3 block text-sm font-semibold text-slate-900">
+                    <Settings className="mr-2 inline h-4 w-4" />
                     Custom Server URL (Optional)
                   </label>
                   <input
                     type="text"
                     value={customServerUrl}
                     onChange={(e) => setCustomServerUrl(e.target.value)}
-                    placeholder="http://127.0.0.1:8787 (leave empty for default)"
-                    className="w-full px-4 py-3 bg-gray-700/50 border border-gray-600 rounded-xl text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-[#60a5fa] focus:border-transparent transition-all duration-300"
+                    placeholder="http://127.0.0.1:8787"
+                    className="w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-slate-950 placeholder-slate-400 transition-shadow focus:border-transparent focus:outline-none focus:ring-2 focus:ring-sky-500"
                   />
                 </div>
 
-                {/* Model Path */}
                 <div>
-                  <label className="block text-lg font-semibold text-white mb-3">
-                    <FolderOpen className="w-5 h-5 inline mr-2" />
-                    Model Path(s) (.safetensors files)
+                  <label className="mb-3 block text-sm font-semibold text-slate-900">
+                    <FolderOpen className="mr-2 inline h-4 w-4" />
+                    Model Path(s)
                   </label>
                   <div className="space-y-2">
                     {modelPaths.map((path, index) => (
@@ -798,8 +960,8 @@ export function Unlearning() {
                             newPaths[index] = e.target.value;
                             setModelPaths(newPaths);
                           }}
-                          placeholder="C:/path/to/your/model.safetensors"
-                          className="flex-1 px-4 py-3 bg-gray-700/50 border border-gray-600 rounded-xl text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-[#60a5fa] focus:border-transparent transition-all duration-300"
+                          placeholder="/path/to/model.safetensors"
+                          className="flex-1 rounded-xl border border-slate-200 bg-white px-4 py-3 text-slate-950 placeholder-slate-400 transition-shadow focus:border-transparent focus:outline-none focus:ring-2 focus:ring-sky-500"
                         />
                         {modelPaths.length > 1 && (
                           <button
@@ -807,182 +969,173 @@ export function Unlearning() {
                               const newPaths = modelPaths.filter((_, i) => i !== index);
                               setModelPaths(newPaths);
                             }}
-                            className="px-3 py-3 bg-red-600 text-white rounded-xl hover:bg-red-700 transition-colors"
+                            className="rounded-xl bg-rose-600 px-3 py-3 text-white transition-colors hover:bg-rose-700"
                           >
-                            <X className="w-5 h-5" />
+                            <X className="h-5 w-5" />
                           </button>
                         )}
                       </div>
                     ))}
                     <button
                       onClick={() => setModelPaths([...modelPaths, ''])}
-                      className="px-4 py-2 bg-gray-700 text-white rounded-lg hover:bg-gray-600 transition-colors text-sm"
+                      className="rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-medium text-slate-700 transition-colors hover:bg-slate-100"
                     >
                       + Add Another Model Path
                     </button>
                   </div>
                 </div>
 
-                {/* Output Directory */}
                 <div>
-                  <label className="block text-lg font-semibold text-white mb-3">
-                    <FolderOpen className="w-5 h-5 inline mr-2" />
+                  <label className="mb-3 block text-sm font-semibold text-slate-900">
+                    <FolderOpen className="mr-2 inline h-4 w-4" />
                     Output Directory
                   </label>
                   <input
                     type="text"
                     value={outputDir}
                     onChange={(e) => setOutputDir(e.target.value)}
-                    placeholder="C:/path/to/output/directory"
-                    className="w-full px-4 py-3 bg-gray-700/50 border border-gray-600 rounded-xl text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-[#60a5fa] focus:border-transparent transition-all duration-300"
+                    placeholder="/path/to/output"
+                    className="w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-slate-950 placeholder-slate-400 transition-shadow focus:border-transparent focus:outline-none focus:ring-2 focus:ring-sky-500"
                   />
                 </div>
 
-                {/* Target Information */}
                 <div>
-                  <label className="block text-lg font-semibold text-white mb-3">
-                    <FileText className="w-5 h-5 inline mr-2" />
+                  <label className="mb-3 block text-sm font-semibold text-slate-900">
+                    <FileText className="mr-2 inline h-4 w-4" />
                     Target Text to Unlearn
                   </label>
                   <input
                     type="text"
                     value={targetText}
                     onChange={(e) => setTargetText(e.target.value)}
-                    placeholder="Enter the text/phrase you want to unlearn..."
-                    className="w-full px-4 py-3 bg-gray-700/50 border border-gray-600 rounded-xl text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-[#60a5fa] focus:border-transparent transition-all duration-300"
+                    placeholder="Enter the target phrase or token range..."
+                    className="w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-slate-950 placeholder-slate-400 transition-shadow focus:border-transparent focus:outline-none focus:ring-2 focus:ring-sky-500"
                   />
                 </div>
 
-                {/* Method Selection */}
                 <div>
-                  <label className="block text-lg font-semibold text-white mb-3">
-                    Unlearning Method
-                  </label>
-                  <div className="grid grid-cols-2 gap-4">
+                  <label className="mb-3 block text-sm font-semibold text-slate-900">Unlearning Method</label>
+                  <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
                     <button
                       onClick={() => setLocalMethod('EmbeddingScrub')}
-                      className={`p-4 rounded-xl border transition-all duration-300 ${localMethod === 'EmbeddingScrub'
-                          ? 'bg-[#60a5fa]/20 border-[#60a5fa] text-white'
-                          : 'bg-gray-700/50 border-gray-600 text-gray-300 hover:bg-gray-700'
-                        }`}
+                      className={`rounded-2xl border p-4 text-left transition-all ${
+                        localMethod === 'EmbeddingScrub'
+                          ? 'border-slate-900 bg-slate-900 text-white'
+                          : 'border-slate-200 bg-white text-slate-700 hover:bg-slate-50'
+                      }`}
                     >
-                      <h4 className="font-bold">Embedding Scrub</h4>
-                      <p className="text-sm mt-2">Modify token embeddings to reduce information about the target</p>
+                      <h4 className="font-semibold">Embedding Scrub</h4>
+                      <p className={`mt-2 text-sm leading-6 ${localMethod === 'EmbeddingScrub' ? 'text-slate-200' : 'text-slate-500'}`}>
+                        Modify token embeddings to reduce associations with the target.
+                      </p>
                     </button>
                     <button
                       onClick={() => setLocalMethod('LastLayerSurgery')}
-                      className={`p-4 rounded-xl border transition-all duration-300 ${localMethod === 'LastLayerSurgery'
-                          ? 'bg-[#60a5fa]/20 border-[#60a5fa] text-white'
-                          : 'bg-gray-700/50 border-gray-600 text-gray-300 hover:bg-gray-700'
-                        }`}
+                      className={`rounded-2xl border p-4 text-left transition-all ${
+                        localMethod === 'LastLayerSurgery'
+                          ? 'border-slate-900 bg-slate-900 text-white'
+                          : 'border-slate-200 bg-white text-slate-700 hover:bg-slate-50'
+                      }`}
                     >
-                      <h4 className="font-bold">Last Layer Surgery</h4>
-                      <p className="text-sm mt-2">Modify the final layer to reduce logits for target tokens</p>
+                      <h4 className="font-semibold">Last Layer Surgery</h4>
+                      <p className={`mt-2 text-sm leading-6 ${localMethod === 'LastLayerSurgery' ? 'text-slate-200' : 'text-slate-500'}`}>
+                        Adjust the final layer to reduce logits linked to the target output.
+                      </p>
                     </button>
                   </div>
                 </div>
 
-                {/* Advanced Settings */}
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
                   <div>
-                    <label className="block text-sm font-medium text-gray-300 mb-2">
-                      Max Steps
-                    </label>
+                    <label className="mb-2 block text-sm font-medium text-slate-600">Max Steps</label>
                     <input
                       type="number"
                       value={maxSteps}
                       onChange={(e) => setMaxSteps(parseInt(e.target.value) || 100)}
-                      className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-[#60a5fa]"
+                      className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-slate-950 focus:border-transparent focus:outline-none focus:ring-2 focus:ring-sky-500"
                     />
                   </div>
                   <div>
-                    <label className="block text-sm font-medium text-gray-300 mb-2">
-                      Learning Rate
-                    </label>
+                    <label className="mb-2 block text-sm font-medium text-slate-600">Learning Rate</label>
                     <input
                       type="number"
                       step="0.001"
                       value={learningRate}
                       onChange={(e) => setLearningRate(parseFloat(e.target.value) || 0.01)}
-                      className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-[#60a5fa]"
+                      className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-slate-950 focus:border-transparent focus:outline-none focus:ring-2 focus:ring-sky-500"
                     />
                   </div>
                   <div>
-                    <label className="block text-sm font-medium text-gray-300 mb-2">
-                      Seed
-                    </label>
+                    <label className="mb-2 block text-sm font-medium text-slate-600">Seed</label>
                     <input
                       type="number"
                       value={seed}
                       onChange={(e) => setSeed(parseInt(e.target.value) || 42)}
-                      className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-[#60a5fa]"
+                      className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-slate-950 focus:border-transparent focus:outline-none focus:ring-2 focus:ring-sky-500"
                     />
                   </div>
                 </div>
 
-                {/* Process Button */}
-                <div className="flex justify-center">
+                <div className="flex justify-start">
                   <button
-                    onClick={activeTab === 'whitebox' ? handleLocalUnlearning : handleWhiteboxUnlearning}
+                    onClick={handleLocalUnlearning}
                     disabled={whiteboxLoading || !localServerOnline}
-                    className="flex items-center px-8 py-4 bg-gradient-to-r from-[#60a5fa] to-[#60a5fa]/90 text-white font-semibold rounded-xl hover:from-[#60a5fa]/90 hover:to-[#60a5fa]/80 transition-all duration-300 shadow-lg shadow-[#60a5fa]/30 hover:shadow-[#60a5fa]/50 hover:scale-105 disabled:opacity-50 disabled:cursor-not-allowed"
+                    className="inline-flex items-center rounded-xl bg-slate-950 px-6 py-3 font-semibold text-white transition-colors hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-50"
                   >
                     {whiteboxLoading ? (
                       <>
-                        <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-white mr-2"></div>
+                        <div className="mr-2 h-5 w-5 animate-spin rounded-full border-b-2 border-white" />
                         Processing...
                       </>
                     ) : (
                       <>
-                        <Play className="w-5 h-5 mr-2" />
+                        <Play className="mr-2 h-5 w-5" />
                         Start Unlearning
                       </>
                     )}
                   </button>
                 </div>
 
-                {/* Progress Display */}
                 {whiteboxLoading && (
-                  <div className="bg-gray-700/30 rounded-xl p-6 border border-gray-600">
-                    <div className="flex items-center justify-between mb-4">
-                      <span className="text-white font-semibold">Processing...</span>
-                      <span className="text-purple-400 font-bold">{whiteboxProgress.percent}%</span>
+                  <div className="rounded-2xl border border-slate-200 bg-slate-50 p-6">
+                    <div className="mb-4 flex items-center justify-between">
+                      <span className="font-medium text-slate-900">Processing</span>
+                      <span className="font-semibold text-slate-900">{whiteboxProgress.percent}%</span>
                     </div>
-                    <div className="w-full bg-gray-700 rounded-full h-3 mb-4">
+                    <div className="mb-4 h-3 w-full rounded-full bg-slate-200">
                       <div
-                        className="bg-gradient-to-r from-[#60a5fa] to-[#60a5fa]/90 h-3 rounded-full transition-all duration-500"
+                        className="h-3 rounded-full bg-slate-900 transition-all duration-500"
                         style={{ width: `${whiteboxProgress.percent}%` }}
                       />
                     </div>
-                    <p className="text-gray-300">{whiteboxProgress.message}</p>
+                    <p className="text-sm text-slate-600">{whiteboxProgress.message}</p>
                   </div>
                 )}
 
-                {/* White-box Results */}
                 {whiteboxResults && (
-                  <div className="bg-gray-700/30 rounded-xl p-6 border border-gray-600">
-                    <h3 className="text-xl font-bold text-white mb-4">Processing Results</h3>
+                  <div className="rounded-2xl border border-slate-200 bg-slate-50 p-6">
+                    <h3 className="mb-4 text-xl font-semibold text-slate-950">Processing Results</h3>
                     {whiteboxResults.success ? (
                       <div className="space-y-4">
-                        <div className="bg-green-900/30 border border-green-500/50 rounded-xl p-4">
-                          <div className="flex items-center mb-2">
-                            <CheckCircle className="w-6 h-6 text-green-400 mr-3" />
-                            <span className="text-green-400 font-bold text-lg">Unlearning Completed Successfully</span>
+                        <div className="rounded-2xl border border-emerald-200 bg-emerald-50 p-4">
+                          <div className="flex items-center">
+                            <CheckCircle className="mr-3 h-6 w-6 text-emerald-600" />
+                            <span className="text-lg font-semibold text-emerald-800">Unlearning Completed Successfully</span>
                           </div>
                         </div>
 
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
                           {whiteboxResults.before_similarity !== undefined && (
                             <>
-                              <div className="bg-gray-800/50 rounded-xl p-4 border border-gray-600">
-                                <div className="text-white font-semibold mb-2">Before Similarity</div>
-                                <div className="text-2xl font-bold text-blue-400">
+                              <div className="rounded-xl border border-slate-200 bg-white p-4">
+                                <div className="mb-2 font-medium text-slate-700">Before Similarity</div>
+                                <div className="text-2xl font-semibold text-slate-950">
                                   {(whiteboxResults.before_similarity * 100).toFixed(2)}%
                                 </div>
                               </div>
-                              <div className="bg-gray-800/50 rounded-xl p-4 border border-gray-600">
-                                <div className="text-white font-semibold mb-2">After Similarity</div>
-                                <div className="text-2xl font-bold text-green-400">
+                              <div className="rounded-xl border border-slate-200 bg-white p-4">
+                                <div className="mb-2 font-medium text-slate-700">After Similarity</div>
+                                <div className="text-2xl font-semibold text-emerald-700">
                                   {(whiteboxResults.after_similarity * 100).toFixed(2)}%
                                 </div>
                               </div>
@@ -991,15 +1144,15 @@ export function Unlearning() {
 
                           {whiteboxResults.before_logit !== undefined && (
                             <>
-                              <div className="bg-gray-800/50 rounded-xl p-4 border border-gray-600">
-                                <div className="text-white font-semibold mb-2">Before Logit</div>
-                                <div className="text-2xl font-bold text-blue-400">
+                              <div className="rounded-xl border border-slate-200 bg-white p-4">
+                                <div className="mb-2 font-medium text-slate-700">Before Logit</div>
+                                <div className="text-2xl font-semibold text-slate-950">
                                   {whiteboxResults.before_logit.toFixed(4)}
                                 </div>
                               </div>
-                              <div className="bg-gray-800/50 rounded-xl p-4 border border-gray-600">
-                                <div className="text-white font-semibold mb-2">After Logit</div>
-                                <div className="text-2xl font-bold text-green-400">
+                              <div className="rounded-xl border border-slate-200 bg-white p-4">
+                                <div className="mb-2 font-medium text-slate-700">After Logit</div>
+                                <div className="text-2xl font-semibold text-emerald-700">
                                   {whiteboxResults.after_logit.toFixed(4)}
                                 </div>
                               </div>
@@ -1008,13 +1161,13 @@ export function Unlearning() {
                         </div>
 
                         {artifacts.length > 0 && (
-                          <div className="mt-6">
-                            <h4 className="text-lg font-bold text-white mb-3">Generated Artifacts</h4>
-                            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                          <div className="mt-2">
+                            <h4 className="mb-3 text-lg font-semibold text-slate-950">Generated Artifacts</h4>
+                            <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
                               {artifacts.map((artifact: any, index: number) => (
-                                <div key={index} className="bg-gray-800/50 rounded-lg p-3 border border-gray-600">
-                                  <div className="font-medium text-white">{artifact.name}</div>
-                                  <div className="text-sm text-gray-400">
+                                <div key={index} className="rounded-xl border border-slate-200 bg-white p-4">
+                                  <div className="font-medium text-slate-900">{artifact.name}</div>
+                                  <div className="mt-1 text-sm text-slate-500">
                                     {Math.round(artifact.size / 1024)} KB
                                   </div>
                                 </div>
@@ -1024,13 +1177,13 @@ export function Unlearning() {
                         )}
                       </div>
                     ) : (
-                      <div className="bg-red-900/30 border border-red-500/50 rounded-xl p-4">
-                        <div className="flex items-center mb-2">
-                          <AlertCircle className="w-6 h-6 text-red-400 mr-3" />
-                          <span className="text-red-400 font-bold text-lg">Unlearning Failed</span>
+                      <div className="rounded-2xl border border-rose-200 bg-rose-50 p-4">
+                        <div className="mb-2 flex items-center">
+                          <AlertCircle className="mr-3 h-6 w-6 text-rose-600" />
+                          <span className="text-lg font-semibold text-rose-800">Unlearning Failed</span>
                         </div>
                         {whiteboxResults.error && (
-                          <p className="text-red-300">{whiteboxResults.error}</p>
+                          <p className="text-sm text-rose-700">{whiteboxResults.error}</p>
                         )}
                       </div>
                     )}

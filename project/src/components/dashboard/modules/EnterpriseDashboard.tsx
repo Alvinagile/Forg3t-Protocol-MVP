@@ -4,13 +4,13 @@ import {
   TrendingUp, 
   Coins,
   Download,
+  AlertTriangle,
   Plus,
   Settings,
   Filter,
   Search,
   Eye
 } from 'lucide-react';
-import { PDFGenerator } from '../../../lib/pdfGenerator';
 
 interface ModelIntegration {
   id: string;
@@ -139,32 +139,10 @@ export function EnterpriseDashboard() {
   };
 
   const downloadCertificate = (certificate: AuditCertificate) => {
-    const report = {
-      user_id: 'user_enterprise',
-      request_id: certificate.request_id,
-      operation_type: 'AI Unlearning Operation',
-      timestamp: certificate.generated_at,
-      zk_proof_hash: 'zk_' + certificate.id.slice(0, 64),
-      stellar_tx_id: '0x' + Math.random().toString(16).slice(2, 66),
-      ipfs_cid: certificate.ipfs_hash || 'Qm' + Math.random().toString(36).slice(2, 44),
-      jurisdiction: 'EU' as const,
-      regulatory_tags: ['GDPR Article 17', 'Right to be Forgotten', 'AI Transparency']
-    };
-
-    const additionalData = {
-      modelIdentifier: certificate.model_id,
-      leakScore: Math.random() * 0.1,
-      unlearningType: 'Enterprise API Integration',
-      targetInfo: 'Enterprise Data Removal'
-    };
-
-    try {
-      const blob = PDFGenerator.generateComplianceCertificate(report, additionalData);
-      PDFGenerator.downloadPDF(blob, `audit-certificate-${certificate.id.slice(0, 8)}.pdf`);
-    } catch (error) {
-      console.error('Error generating PDF:', error);
-      alert('Error generating PDF. Please try again.');
-    }
+    alert(
+      'Enterprise certificate export is blocked: required evidence fields (zk_proof_hash, stellar_tx_id, ipfs_cid, leak_score) are not fully available in this view.'
+    );
+    console.warn('Blocked certificate export for request:', certificate.request_id);
   };
 
   const viewCertificate = (certificate: AuditCertificate) => {
@@ -179,7 +157,7 @@ export function EnterpriseDashboard() {
             Enterprise Dashboard
           </h1>
           <p className="mt-1 text-gray-400">
-            Manage model integrations, token usage, and audit certificates
+            Sample enterprise view for integration planning. Not a live evidence source.
           </p>
         </div>
         <div className="mt-4 flex md:mt-0 md:ml-4">
@@ -190,6 +168,15 @@ export function EnterpriseDashboard() {
             <Plus className="-ml-1 mr-2 h-5 w-5" />
             Add Integration
           </button>
+        </div>
+      </div>
+
+      <div className="mt-4 bg-amber-900/20 border border-amber-500/50 rounded-lg p-4">
+        <div className="flex items-start gap-3">
+          <AlertTriangle className="h-5 w-5 text-amber-400 mt-0.5" />
+          <p className="text-amber-200 text-sm">
+            Integration, usage, and certificate rows in this module are sample data. Use backend evidence APIs before making compliance or billing claims.
+          </p>
         </div>
       </div>
 

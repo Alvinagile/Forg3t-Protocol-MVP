@@ -4,6 +4,7 @@ import {
   CheckCircle, 
   Clock, 
   AlertCircle, 
+  AlertTriangle,
   Download, 
   Eye, 
   ExternalLink, 
@@ -12,7 +13,6 @@ import {
   Filter,
   Search
 } from 'lucide-react';
-import { PDFGenerator } from '../../../lib/pdfGenerator';
 
 interface ComplianceRequest {
   id: string;
@@ -145,33 +145,10 @@ export function ComplianceDashboard() {
     }
   };
 
-  const downloadPDF = (request: ComplianceRequest) => {
-    const report = {
-      user_id: request.user_id,
-      request_id: request.id,
-      operation_type: 'AI Unlearning Operation',
-      timestamp: request.created_at || new Date().toISOString(),
-      zk_proof_hash: request.audit_trail?.zk_proof || 'proof_' + request.id.slice(0, 8),
-      stellar_tx_id: request.blockchain_tx_hash || '0x' + Math.random().toString(16).slice(2, 66),
-      ipfs_cid: request.audit_trail?.ipfs_hash || 'Qm' + Math.random().toString(36).slice(2, 44),
-      jurisdiction: 'EU' as const,
-      regulatory_tags: ['GDPR Article 17', 'Right to be Forgotten', 'AI Transparency']
-    };
-
-    const additionalData = {
-      modelIdentifier: request.model_id,
-      leakScore: request.audit_trail?.leak_score || 0.05,
-      unlearningType: 'Black-box Adversarial Testing',
-      targetInfo: request.request_reason
-    };
-
-    try {
-      const blob = PDFGenerator.generateComplianceCertificate(report, additionalData);
-      PDFGenerator.downloadPDF(blob, `unlearning-certificate-${request.id.slice(0, 8)}.pdf`);
-    } catch (error) {
-      console.error('Error generating PDF:', error);
-      alert('Error generating PDF. Please try again.');
-    }
+  const downloadPDF = (_request: ComplianceRequest) => {
+    alert(
+      'Compliance certificate export is blocked in this module: it uses sample records. Use the live proof-backed dashboard flow for export.'
+    );
   };
 
   return (
@@ -182,7 +159,16 @@ export function ComplianceDashboard() {
             Compliance Dashboard
           </h1>
           <p className="mt-1 text-gray-400">
-            Monitor your AI unlearning requests and compliance status
+            Sample compliance request view. Live regulator evidence must come from signed backend artifacts.
+          </p>
+        </div>
+      </div>
+
+      <div className="mt-4 bg-amber-900/20 border border-amber-500/50 rounded-lg p-4">
+        <div className="flex items-start gap-3">
+          <AlertTriangle className="h-5 w-5 text-amber-400 mt-0.5" />
+          <p className="text-amber-200 text-sm">
+            This module currently shows sample records for UX validation. Compliance export is fully blocked in this module.
           </p>
         </div>
       </div>

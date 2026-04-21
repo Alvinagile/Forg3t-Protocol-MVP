@@ -23,9 +23,28 @@ serve(async (req: Request) => {
       throw new Error("File is required.");
     }
 
-    // Use provided Pinata API credentials
-    const pinataApiKey = "9ae274c854b719673a10";
-    const pinataApiSecret = "4192f7a65e21d634e38eaa1605a53c37e30cb156db72095d0e5d40c2e70e73b0";
+    // Fail closed when credentials are missing. Never use hardcoded secrets.
+    const pinataApiKey = Deno.env.get("PINATA_API_KEY");
+    const pinataApiSecret =
+      Deno.env.get("PINATA_API_SECRET_API_KEY") ??
+      Deno.env.get("PINATA_API_SECRET");
+
+    if (!pinataApiKey || !pinataApiSecret) {
+      return new Response(
+        JSON.stringify({
+          success: false,
+          error: "IPFS upload is blocked: missing Pinata credentials.",
+          evidence_status: "blocked",
+        }),
+        {
+          status: 503,
+          headers: {
+            "Content-Type": "application/json",
+            ...corsHeaders,
+          },
+        }
+      );
+    }
 
     // Log upload attempt (without sensitive data)
     console.log(`[IPFS] Uploading file: ${filename}, size: ${file.size} bytes`);

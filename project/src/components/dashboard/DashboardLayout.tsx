@@ -15,6 +15,7 @@ import {
 } from 'lucide-react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { authService } from '../../lib/supabase';
+import { BrandLockup } from '../BrandLockup';
 
 export function DashboardLayout({ children }: { children: React.ReactNode }) {
   const { user, loading } = useAuth();
@@ -82,8 +83,8 @@ export function DashboardLayout({ children }: { children: React.ReactNode }) {
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-[#091024] flex items-center justify-center">
-        <div className="text-white">Loading dashboard...</div>
+      <div className="min-h-screen bg-slate-50 flex items-center justify-center">
+        <div className="text-slate-600">Loading dashboard...</div>
       </div>
     );
   }
@@ -91,11 +92,11 @@ export function DashboardLayout({ children }: { children: React.ReactNode }) {
   const menuItems = getMenuItems();
 
   return (
-    <div className="min-h-screen bg-[#091024] flex">
+    <div className="min-h-screen bg-slate-50 flex">
       {sidebarOpen && (
         <div className="fixed inset-0 z-40 md:hidden">
-          <div className="fixed inset-0 bg-gray-600 bg-opacity-75" onClick={() => setSidebarOpen(false)}></div>
-          <div className="relative flex-1 flex flex-col max-w-xs w-full bg-[#002d68]">
+          <div className="fixed inset-0 bg-slate-950/40" onClick={() => setSidebarOpen(false)}></div>
+          <div className="relative flex-1 flex max-w-xs w-full flex-col border-r border-slate-200 bg-white">
             <div className="absolute top-0 right-0 -mr-12 pt-2">
               <button
                 type="button"
@@ -107,11 +108,8 @@ export function DashboardLayout({ children }: { children: React.ReactNode }) {
               </button>
             </div>
             <div className="flex-1 h-0 pt-5 pb-4 overflow-y-auto">
-              <div className="flex-shrink-0 flex items-center px-4">
-                <div className="h-8 w-8 rounded-full bg-[#60a5fa] flex items-center justify-center">
-                  <span className="text-white font-bold">F3</span>
-                </div>
-                <span className="ml-3 text-white text-xl font-bold">Forg3t Protocol</span>
+              <div className="flex-shrink-0 px-4">
+                <BrandLockup compact />
               </div>
               <nav className="mt-5 px-2 space-y-1">
                 {menuItems.map((item) => {
@@ -122,29 +120,22 @@ export function DashboardLayout({ children }: { children: React.ReactNode }) {
                       to={item.href}
                       className={`${
                         location.pathname === item.href
-                          ? 'bg-[#60a5fa]/20 text-white'
-                          : 'text-gray-300 hover:bg-[#60a5fa]/10 hover:text-white'
-                      } group flex items-center px-2 py-2 text-base font-medium rounded-md`}
+                          ? 'bg-slate-100 text-slate-950 shadow-sm'
+                          : 'text-slate-600 hover:bg-slate-100 hover:text-slate-950'
+                      } group flex items-center rounded-xl px-3 py-3 text-base font-medium transition-colors`}
                       onClick={() => setSidebarOpen(false)}
                     >
-                      <Icon className="mr-4 flex-shrink-0 h-6 w-6 text-[#60a5fa]" />
+                      <Icon className={`mr-4 h-6 w-6 ${location.pathname === item.href ? 'text-slate-900' : 'text-slate-400 group-hover:text-slate-900'}`} />
                       {item.name}
                     </Link>
                   );
                 })}
               </nav>
             </div>
-            <div className="flex-shrink-0 flex border-t border-gray-600 p-4">
-              <button
-                onClick={handleLogout}
-                className="flex-shrink-0 w-full group block"
-              >
-                <div className="flex items-center">
-                  <div className="ml-3">
-                    <p className="text-sm font-medium text-white">Sign out</p>
-                  </div>
-                  <LogOut className="ml-auto h-5 w-5 text-gray-400" />
-                </div>
+            <div className="border-t border-slate-200 p-4">
+              <button onClick={handleLogout} className="flex w-full items-center text-sm font-medium text-slate-700 hover:text-slate-950">
+                <LogOut className="mr-2 h-4 w-4" />
+                Sign out
               </button>
             </div>
           </div>
@@ -152,12 +143,9 @@ export function DashboardLayout({ children }: { children: React.ReactNode }) {
       )}
 
       <div className="hidden md:flex md:w-64 md:flex-col md:fixed md:inset-y-0">
-        <div className="flex-1 flex flex-col min-h-0 bg-[#002d68] border-r border-gray-600">
-          <div className="flex items-center h-16 px-4 bg-[#091024] shrink-0">
-            <div className="h-8 w-8 rounded-full bg-[#60a5fa] flex items-center justify-center">
-              <span className="text-white font-bold">F3</span>
-            </div>
-            <span className="ml-3 text-white text-xl font-bold">Forg3t Protocol</span>
+        <div className="flex-1 flex flex-col min-h-0 bg-white border-r border-slate-200">
+          <div className="px-4 py-5 border-b border-slate-200 shrink-0">
+            <BrandLockup compact />
           </div>
           <div className="flex-1 h-0 overflow-y-auto">
             <nav className="px-2 py-4 space-y-1">
@@ -169,30 +157,30 @@ export function DashboardLayout({ children }: { children: React.ReactNode }) {
                     to={item.href}
                     className={`${
                       location.pathname === item.href
-                        ? 'bg-[#60a5fa]/20 text-white'
-                        : 'text-gray-300 hover:bg-[#60a5fa]/10 hover:text-white'
-                    } group flex items-center px-2 py-2 text-sm font-medium rounded-md transition-colors`}
+                        ? 'bg-slate-100 text-slate-950 shadow-sm'
+                        : 'text-slate-600 hover:bg-slate-100 hover:text-slate-950'
+                    } group flex items-center rounded-xl px-3 py-3 text-sm font-medium transition-colors`}
                   >
-                    <Icon className="mr-3 flex-shrink-0 h-5 w-5 text-[#60a5fa]" />
+                    <Icon className={`mr-3 h-5 w-5 ${location.pathname === item.href ? 'text-slate-900' : 'text-slate-400 group-hover:text-slate-900'}`} />
                     {item.name}
                   </Link>
                 );
               })}
             </nav>
           </div>
-          <div className="flex-shrink-0 flex border-t border-gray-600 p-4">
+          <div className="border-t border-slate-200 p-4">
             <div className="flex items-center">
               <div>
-                <p className="text-sm font-medium text-white max-w-[120px] truncate">
+                <p className="text-sm font-medium text-slate-900 max-w-[120px] truncate">
                   {user?.email}
                 </p>
-                <p className="text-xs font-medium text-gray-400 capitalize">
+                <p className="text-xs font-medium text-slate-500 capitalize">
                   {userRole?.package_type || 'individual'}
                 </p>
               </div>
               <button
                 onClick={handleLogout}
-                className="ml-auto flex-shrink-0 bg-[#002d68] p-1 rounded-full text-gray-400 hover:text-white focus:outline-none"
+                className="ml-auto rounded-full p-2 text-slate-500 transition-colors hover:bg-slate-100 hover:text-slate-950 focus:outline-none"
               >
                 <span className="sr-only">Sign out</span>
                 <LogOut className="h-5 w-5" />
@@ -203,14 +191,14 @@ export function DashboardLayout({ children }: { children: React.ReactNode }) {
       </div>
 
       <div className="md:pl-64 flex flex-col flex-1">
-        <div className="sticky top-0 z-10 md:hidden pl-1 pt-1 sm:pl-3 sm:pt-3 bg-[#091024]">
+        <div className="sticky top-0 z-10 border-b border-slate-200 bg-white/90 pl-1 pt-1 sm:pl-3 sm:pt-3 backdrop-blur md:hidden">
           <button
             type="button"
-            className="-ml-0.5 -mt-0.5 h-12 w-12 inline-flex items-center justify-center rounded-md text-gray-400 hover:text-gray-500 focus:outline-none"
+            className="-ml-0.5 -mt-0.5 inline-flex h-12 w-12 items-center justify-center rounded-md text-slate-400 hover:text-slate-700 focus:outline-none"
             onClick={() => setSidebarOpen(true)}
           >
             <span className="sr-only">Open sidebar</span>
-            <Menu className="h-6 w-6 text-white" />
+            <Menu className="h-6 w-6 text-slate-950" />
           </button>
         </div>
         <main className="flex-1">
